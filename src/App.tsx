@@ -1,10 +1,32 @@
+import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
+import Onboarding from "./components/Onboarding";
 import { useTimerEvents } from "./lib/useTimerEvents";
+
+const ONBOARDING_KEY = "focusflow_onboarding_done";
 
 function App() {
   // Subscribe to timer events from Rust backend
   useTimerEvents();
+
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    const done = localStorage.getItem(ONBOARDING_KEY);
+    if (!done) {
+      setShowOnboarding(true);
+    }
+  }, []);
+
+  const handleOnboardingComplete = () => {
+    localStorage.setItem(ONBOARDING_KEY, "true");
+    setShowOnboarding(false);
+  };
+
+  if (showOnboarding) {
+    return <Onboarding onComplete={handleOnboardingComplete} />;
+  }
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">

@@ -19,7 +19,7 @@ export default function Sidebar() {
       className="flex flex-col w-[220px] shrink-0 border-r"
       style={{
         background: "var(--bg-secondary)",
-        borderColor: "var(--text-tertiary)",
+        borderColor: "rgba(72,72,74,0.3)",
       }}
     >
       {/* Logo */}
@@ -53,7 +53,9 @@ export default function Sidebar() {
                 }
                 style={({ isActive }) => ({
                   background: isActive ? "var(--bg-tertiary)" : "transparent",
-                  color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+                  color: isActive
+                    ? "var(--text-primary)"
+                    : "var(--text-secondary)",
                 })}
               >
                 <Icon size={18} />
@@ -65,14 +67,25 @@ export default function Sidebar() {
       </nav>
 
       {/* Settings */}
-      <div className="px-3 py-4 border-t" style={{ borderColor: "var(--text-tertiary)" }}>
-        <button
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm w-full transition-colors duration-200 hover:text-white/80"
-          style={{ color: "var(--text-secondary)" }}
+      <div
+        className="px-3 py-4 border-t"
+        style={{ borderColor: "rgba(72,72,74,0.3)" }}
+      >
+        <NavLink
+          to="/settings"
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-200 hover:text-white/80 ${
+              isActive ? "text-white" : ""
+            }`
+          }
+          style={({ isActive }) => ({
+            color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
+            background: isActive ? "var(--bg-tertiary)" : "transparent",
+          })}
         >
           <Settings size={18} />
           设置
-        </button>
+        </NavLink>
       </div>
     </aside>
   );

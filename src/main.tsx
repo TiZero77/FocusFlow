@@ -5,6 +5,7 @@ import App from "./App";
 import TodayPage from "./components/TodayPage";
 import TrendsPage from "./components/TrendsPage";
 import BindingsPage from "./components/BindingsPage";
+import SettingsPage from "./components/SettingsPage";
 import FloatingWidget from "./components/FloatingWidget";
 import "./index.css";
 
@@ -16,6 +17,7 @@ createRoot(document.getElementById("root")!).render(
           <Route index element={<TodayPage />} />
           <Route path="trends" element={<TrendsPage />} />
           <Route path="bindings" element={<BindingsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
         </Route>
         <Route path="/widget" element={<FloatingWidget />} />
       </Routes>
