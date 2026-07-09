@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppBinding {
     pub id: String,
     pub app_name: String,
@@ -16,6 +17,7 @@ pub struct AppBinding {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UsageRecord {
     pub id: String,
     pub binding_id: String,
@@ -27,6 +29,7 @@ pub struct UsageRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PomodoroSession {
     pub id: String,
     pub binding_id: String,
@@ -42,6 +45,7 @@ pub struct PomodoroSession {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ForegroundApp {
     pub name: String,
     pub bundle_id: String,

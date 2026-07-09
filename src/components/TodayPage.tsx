@@ -1,11 +1,26 @@
+import { useEffect } from "react";
 import { Timer, Flame, Zap } from "lucide-react";
+import { useTimerStore } from "../stores/timerStore";
+import { getBindings } from "../lib/tauri";
+import { formatDuration, formatTimer } from "../lib/utils";
 
 export default function TodayPage() {
+  const { bindings, activeTimers, setBindings } = useTimerStore();
+
+  useEffect(() => {
+    getBindings().then(setBindings).catch(console.error);
+  }, [setBindings]);
+
   const today = new Date().toLocaleDateString("zh-CN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
+
+  // Calculate stats from active timers
+  const timerEntries = Object.values(activeTimers);
+  const totalElapsed = timerEntries.reduce((sum, t) => sum + (t?.elapsedSeconds ?? 0), 0);
+  const activeCount = timerEntries.filter((t) => t?.isRunning).length;
 
   return (
     <div className="p-8 max-w-[960px] mx-auto">
@@ -24,25 +39,69 @@ export default function TodayPage() {
         <StatCard
           icon={<Timer size={20} />}
           label="总专注时长"
-          value="0h 00m"
-          trend=""
+          value={formatDuration(totalElapsed)}
           color="var(--accent-focus)"
         />
         <StatCard
           icon={<Flame size={20} />}
           label="完成番茄"
           value="0 个"
-          trend=""
           color="var(--accent-break)"
         />
         <StatCard
           icon={<Zap size={20} />}
-          label="最长连续"
-          value="0 分钟"
-          trend=""
+          label="活跃 App"
+          value={`${activeCount} 个`}
           color="var(--accent-warning)"
         />
       </div>
+
+      {/* Active Timers */}
+      {timerEntries.length > 0 && (
+        <div
+          className="rounded-xl p-6 mb-6"
+          style={{ background: "var(--bg-secondary)" }}
+        >
+          <h2
+            className="text-sm font-medium mb-4"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            实时计时
+          </h2>
+          <div className="flex flex-col gap-2">
+            {timerEntries.map((timer) =>
+              timer ? (
+                <div
+                  key={timer.bindingId}
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg"
+                  style={{ background: "var(--bg-tertiary)" }}
+                >
+                  <div
+                    className="w-2 h-2 rounded-full animate-pulse"
+                    style={{
+                      background: timer.isRunning
+                        ? "var(--accent-focus)"
+                        : "var(--accent-pause)",
+                    }}
+                  />
+                  <span
+                    className="text-sm flex-1"
+                    style={{ color: "var(--text-primary)" }}
+                  >
+                    {timer.appName}
+                  </span>
+                  <span
+                    className="text-lg font-mono font-semibold tabular-nums"
+                    style={{ color: "var(--accent-focus)" }}
+                  >
+                    {formatTimer(timer.elapsedSeconds)}
+                  </span>
+                </div>
+              ) : null
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Timeline */}
       <div
@@ -60,7 +119,9 @@ export default function TodayPage() {
           style={{ background: "var(--bg-tertiary)" }}
         >
           <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-            绑定 app 后开始记录
+            {bindings.length > 0
+              ? "数据积累后显示时间线"
+              : "绑定 app 后开始记录"}
           </span>
         </div>
       </div>
@@ -93,13 +154,11 @@ function StatCard({
   icon,
   label,
   value,
-  trend,
   color,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
-  trend: string;
   color: string;
 }) {
   return (
@@ -118,14 +177,12 @@ function StatCard({
           {label}
         </span>
       </div>
-      <div className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
+      <div
+        className="text-2xl font-semibold"
+        style={{ color: "var(--text-primary)" }}
+      >
         {value}
       </div>
-      {trend && (
-        <div className="text-xs mt-1" style={{ color: "var(--accent-break)" }}>
-          {trend}
-        </div>
-      )}
     </div>
   );
 }

@@ -1,7 +1,11 @@
 import { Outlet } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
+import { useTimerEvents } from "./lib/useTimerEvents";
 
 function App() {
+  // Subscribe to timer events from Rust backend
+  useTimerEvents();
+
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <Sidebar />

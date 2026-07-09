@@ -2,9 +2,11 @@ mod commands;
 mod db;
 mod models;
 mod monitor;
+mod timer;
 
 use rusqlite::Connection;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,16 +23,26 @@ pub fn run() {
             let db_path: PathBuf = app_data_dir.join("focusflow.db");
             let conn = Connection::open(&db_path).expect("failed to open database");
 
-            // Enable WAL mode for better concurrent access
-            conn.execute_batch("PRAGMA journal_mode=WAL;").expect("failed to set WAL mode");
+            // Enable WAL mode
+            conn.execute_batch("PRAGMA journal_mode=WAL;")
+                .expect("failed to set WAL mode");
 
             let database = db::Database::new(conn);
             database.init().expect("failed to initialize database");
 
-            // Register database as managed state
-            app.manage(database);
+            // Load bindings and start timer engine
+            let db = Arc::new(database);
+            let bindings = crate::db::get_bindings(&db).unwrap_or_default();
 
-            log::info!("Database initialized at: {:?}", db_path);
+            let engine = timer::TimerEngine::new();
+            engine.set_bindings(bindings);
+            engine.start(app.handle().clone(), db.clone());
+
+            // Register state
+            app.manage(db);
+            app.manage(engine);
+
+            log::info!("FocusFlow initialized. Database: {:?}", db_path);
 
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -51,6 +63,8 @@ pub fn run() {
             commands::get_running_apps,
             commands::search_installed_apps,
             commands::get_usage_records,
+            commands::get_timer_states,
+            commands::refresh_bindings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
