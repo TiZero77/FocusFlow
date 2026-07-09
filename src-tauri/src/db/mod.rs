@@ -204,6 +204,35 @@ pub fn create_pomodoro_session(
     })
 }
 
+// ── Settings ──
+
+pub fn get_setting(db: &Database, key: &str) -> Result<Option<String>> {
+    let conn = db.conn.lock().unwrap();
+    let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
+    let mut rows = stmt.query_map((key,), |row| row.get::<_, String>(0))?;
+    match rows.next() {
+        Some(Ok(val)) => Ok(Some(val)),
+        _ => Ok(None),
+    }
+}
+
+pub fn set_setting(db: &Database, key: &str, value: &str) -> Result<()> {
+    let conn = db.conn.lock().unwrap();
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        (key, value),
+    )?;
+    Ok(())
+}
+
+pub fn clear_all_data(db: &Database) -> Result<()> {
+    let conn = db.conn.lock().unwrap();
+    conn.execute_batch(
+        "DELETE FROM usage_records; DELETE FROM pomodoro_sessions; DELETE FROM settings;",
+    )?;
+    Ok(())
+}
+
 // ── Helpers ──
 
 fn chrono_now() -> i64 {

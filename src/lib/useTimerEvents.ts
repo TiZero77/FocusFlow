@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { onTimerUpdate, onAppChanged } from "./tauri";
+import { listen } from "@tauri-apps/api/event"; // used for pomodoro-update, idle-changed
+import { onTimerUpdate, onAppChanged, getSetting } from "./tauri";
 import { useTimerStore } from "../stores/timerStore";
 import {
   playFocusComplete,
@@ -23,13 +23,20 @@ interface PomodoroUpdate {
 export function useTimerEvents() {
   const updateTimer = useTimerStore((s) => s.updateTimer);
   const updatePomodoro = useTimerStore((s) => s.updatePomodoro);
+  const setSoundEnabled = useTimerStore((s) => s.setSoundEnabled);
 
   // Track previous states to detect transitions
   const prevStates = useRef<Record<string, string>>({});
 
   useEffect(() => {
+    // Load sound setting
+    getSetting("sound_enabled").then((v) => {
+      if (v !== null) setSoundEnabled(v !== "false");
+    });
+
     // Timer updates (elapsed time)
     const unlistenTimer = onTimerUpdate((update) => {
+      console.log("[Events] timer-update:", JSON.stringify(update));
       updateTimer(update.bindingId, {
         elapsedSeconds: update.elapsedSeconds,
         isRunning: update.isRunning,
@@ -53,13 +60,13 @@ export function useTimerEvents() {
 
         // Detect state transitions and play sounds
         if (prevState && prevState !== state) {
+          const soundEnabled = useTimerStore.getState().soundEnabled;
           if (state === "break" || state === "longBreak") {
-            // Focus just completed
-            playFocusComplete();
+            if (soundEnabled) playFocusComplete();
           } else if (state === "focus" && prevState === "break") {
-            playBreakComplete();
+            if (soundEnabled) playBreakComplete();
           } else if (state === "focus" && prevState === "longBreak") {
-            playLongBreakComplete();
+            if (soundEnabled) playLongBreakComplete();
           }
         }
 
@@ -69,10 +76,16 @@ export function useTimerEvents() {
       }
     );
 
+    // Idle state changes
+    const unlistenIdle = listen<boolean>("idle-changed", (event) => {
+      console.log("Idle changed:", event.payload);
+    });
+
     return () => {
       unlistenTimer.then((fn) => fn());
       unlistenApp.then((fn) => fn());
       unlistenPomodoro.then((fn) => fn());
+      unlistenIdle.then((fn) => fn());
     };
-  }, [updateTimer, updatePomodoro]);
+  }, [updateTimer, updatePomodoro, setSoundEnabled]);
 }

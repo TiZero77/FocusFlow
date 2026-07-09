@@ -58,6 +58,8 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-tertiary) transparent;
 }
 
 /* Scrollbar styling */

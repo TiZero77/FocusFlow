@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Timer, Flame, Zap } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings, getUsageRecords, type UsageRecord } from "../lib/tauri";
-import { formatDuration, formatTimer } from "../lib/utils";
+import { formatDuration, formatTimer, getPomodoroColor, getPomodoroLabel } from "../lib/utils";
 
 export default function TodayPage() {
   const { bindings, activeTimers, setBindings } = useTimerStore();
@@ -319,33 +319,6 @@ function TimelineView({
         ))}
     </div>
   );
-}
-
-// ── Helpers ──
-
-function getPomodoroColor(state: string): string {
-  switch (state) {
-    case "focus":
-      return "var(--accent-focus)";
-    case "break":
-    case "longBreak":
-      return "var(--accent-break)";
-    default:
-      return "var(--accent-pause)";
-  }
-}
-
-function getPomodoroLabel(state: string): string {
-  switch (state) {
-    case "focus":
-      return "专注中";
-    case "break":
-      return "短休息";
-    case "longBreak":
-      return "长休息";
-    default:
-      return "就绪";
-  }
 }
 
 function StatCard({

@@ -86,7 +86,7 @@ export default function AddBindingModal({ open, onClose }: Props) {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b"
-          style={{ borderColor: "var(--text-tertiary)" }}>
+          style={{ borderColor: "rgba(72,72,74,0.3)" }}>
           <h2 className="text-lg font-semibold" style={{ color: "var(--text-primary)" }}>
             添加绑定
           </h2>

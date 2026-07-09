@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Power,
   Clock,
@@ -7,6 +7,7 @@ import {
   Maximize2,
   Trash2,
 } from "lucide-react";
+import { getSetting, setSetting, clearAllData } from "../lib/tauri";
 
 interface SettingRowProps {
   icon: React.ReactNode;
@@ -67,6 +68,58 @@ export default function SettingsPage() {
   const [autoStart, setAutoStart] = useState(true);
   const [idleMinutes, setIdleMinutes] = useState(5);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [clearing, setClearing] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
+
+  // Load settings from backend on mount
+  useEffect(() => {
+    getSetting("auto_start").then((v) => {
+      if (v !== null) setAutoStart(v === "true");
+    });
+    getSetting("idle_minutes").then((v) => {
+      if (v !== null) setIdleMinutes(Number(v));
+    });
+    getSetting("sound_enabled").then((v) => {
+      if (v !== null) setSoundEnabled(v === "true");
+    });
+  }, []);
+
+  // Save setting to backend
+  const save = useCallback((key: string, value: string) => {
+    setSetting(key, value).catch(console.error);
+  }, []);
+
+  const handleAutoStart = (v: boolean) => {
+    setAutoStart(v);
+    save("auto_start", String(v));
+  };
+
+  const handleIdleMinutes = (v: number) => {
+    setIdleMinutes(v);
+    save("idle_minutes", String(v));
+  };
+
+  const handleSoundEnabled = (v: boolean) => {
+    setSoundEnabled(v);
+    save("sound_enabled", String(v));
+  };
+
+  const handleClearData = async () => {
+    if (!clearConfirm) {
+      setClearConfirm(true);
+      setTimeout(() => setClearConfirm(false), 3000);
+      return;
+    }
+    setClearing(true);
+    try {
+      await clearAllData();
+    } catch (err) {
+      console.error("Failed to clear data:", err);
+    } finally {
+      setClearing(false);
+      setClearConfirm(false);
+    }
+  };
 
   return (
     <div className="p-8 max-w-[640px] mx-auto">
@@ -91,7 +144,7 @@ export default function SettingsPage() {
           label="开机自启"
           description="登录时自动启动 FocusFlow"
         >
-          <Toggle checked={autoStart} onChange={setAutoStart} />
+          <Toggle checked={autoStart} onChange={handleAutoStart} />
         </SettingRow>
 
         <SettingRow
@@ -101,7 +154,7 @@ export default function SettingsPage() {
         >
           <select
             value={idleMinutes}
-            onChange={(e) => setIdleMinutes(Number(e.target.value))}
+            onChange={(e) => handleIdleMinutes(Number(e.target.value))}
             className="bg-transparent border rounded-lg px-3 py-1.5 text-sm outline-none"
             style={{
               borderColor: "var(--text-tertiary)",
@@ -129,7 +182,7 @@ export default function SettingsPage() {
           label="提示音"
           description="番茄钟到时间时播放提示音"
         >
-          <Toggle checked={soundEnabled} onChange={setSoundEnabled} />
+          <Toggle checked={soundEnabled} onChange={handleSoundEnabled} />
         </SettingRow>
 
         {/* Widget */}
@@ -174,13 +227,17 @@ export default function SettingsPage() {
           description="删除所有使用记录和番茄钟数据"
         >
           <button
+            onClick={handleClearData}
+            disabled={clearing}
             className="px-3 py-1.5 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
             style={{
-              background: "rgba(239,68,68,0.15)",
+              background: clearConfirm
+                ? "rgba(239,68,68,0.3)"
+                : "rgba(239,68,68,0.15)",
               color: "var(--accent-danger)",
             }}
           >
-            清除
+            {clearing ? "清除中..." : clearConfirm ? "确认清除？" : "清除"}
           </button>
         </SettingRow>
       </div>

@@ -15,7 +15,33 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatTimer(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "00:00";
   const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+  const s = Math.floor(seconds % 60);
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+export function getPomodoroColor(state: string): string {
+  switch (state) {
+    case "focus":
+      return "#3b82f6";
+    case "break":
+    case "longBreak":
+      return "#22c55e";
+    default:
+      return "#6b7280";
+  }
+}
+
+export function getPomodoroLabel(state: string): string {
+  switch (state) {
+    case "focus":
+      return "专注中";
+    case "break":
+      return "短休息";
+    case "longBreak":
+      return "长休息";
+    default:
+      return "就绪";
+  }
 }

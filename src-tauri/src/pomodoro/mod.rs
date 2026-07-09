@@ -3,9 +3,18 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use crate::db::Database;
+use crate::db::{self, Database};
 use crate::models::AppBinding;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
+
+/// Emit an event to all known windows
+fn emit_to_all<S: serde::Serialize + Clone>(app_handle: &tauri::AppHandle, event: &str, payload: S) {
+    for label in &["main", "widget"] {
+        if let Some(win) = app_handle.get_webview_window(label) {
+            let _ = win.emit(event, payload.clone());
+        }
+    }
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +58,7 @@ impl PomodoroPhase {
     }
 }
 
+#[derive(Clone)]
 pub struct PomodoroEngine {
     states: Arc<Mutex<HashMap<String, PomodoroState>>>,
     running: Arc<Mutex<bool>>,
@@ -59,6 +69,14 @@ impl PomodoroEngine {
         Self {
             states: Arc::new(Mutex::new(HashMap::new())),
             running: Arc::new(Mutex::new(false)),
+        }
+    }
+
+    /// Create a shallow clone that shares the same state (for passing to TimerEngine)
+    pub fn clone_ref(&self) -> Self {
+        Self {
+            states: self.states.clone(),
+            running: self.running.clone(),
         }
     }
 
@@ -117,7 +135,7 @@ impl PomodoroEngine {
     }
 
     /// Start the tick loop (runs in background thread)
-    pub fn start(&self, app_handle: tauri::AppHandle) {
+    pub fn start(&self, app_handle: tauri::AppHandle, db: Arc<Database>) {
         let states = self.states.clone();
         let running = self.running.clone();
 
@@ -141,8 +159,26 @@ impl PomodoroEngine {
                         state.remaining_seconds -= 1;
 
                         if state.remaining_seconds <= 0 {
-                            // Phase complete — transition to next
-                            match state.phase {
+                            // Phase complete — save to DB and transition
+                            let completed_phase = state.phase.clone();
+                            let planned_duration = match completed_phase {
+                                PomodoroPhase::Focus => state.focus_minutes as i64 * 60,
+                                PomodoroPhase::Break => state.break_minutes as i64 * 60,
+                                PomodoroPhase::LongBreak => state.long_break_minutes as i64 * 60,
+                            };
+
+                            // Write completed session to database
+                            let _ = db::create_pomodoro_session(
+                                &db,
+                                &state.binding_id,
+                                completed_phase.as_str(),
+                                planned_duration,
+                                planned_duration, // actual = planned for completed sessions
+                                true,
+                                state.pomodoro_index,
+                            );
+
+                            match completed_phase {
                                 PomodoroPhase::Focus => {
                                     state.completed_today += 1;
                                     state.pomodoro_index += 1;
@@ -178,12 +214,26 @@ impl PomodoroEngine {
                 };
 
                 for update in updates {
-                    let _ = app_handle.emit("pomodoro-update", update);
+                    emit_to_all(&app_handle, "pomodoro-update", update);
                 }
 
                 thread::sleep(Duration::from_secs(1));
             }
         });
+    }
+
+    /// Get current pomodoro states for all sessions (for polling)
+    pub fn get_states(&self) -> Vec<PomodoroUpdate> {
+        let lock = self.states.lock().unwrap();
+        lock.values()
+            .map(|s| PomodoroUpdate {
+                binding_id: s.binding_id.clone(),
+                state: s.phase.as_str().to_string(),
+                remaining_seconds: s.remaining_seconds,
+                pomodoro_index: s.pomodoro_index,
+                session_count: s.completed_today,
+            })
+            .collect()
     }
 
     /// Stop the tick loop

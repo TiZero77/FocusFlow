@@ -28,6 +28,7 @@ export interface TimerState {
 interface TimerStore {
   bindings: AppBinding[];
   activeTimers: Record<string, TimerState>;
+  soundEnabled: boolean;
   setBindings: (bindings: AppBinding[]) => void;
   addBinding: (binding: AppBinding) => void;
   removeBinding: (id: string) => void;
@@ -39,11 +40,13 @@ interface TimerStore {
     index: number,
     sessionCount: number
   ) => void;
+  setSoundEnabled: (enabled: boolean) => void;
 }
 
 export const useTimerStore = create<TimerStore>((set) => ({
   bindings: [],
   activeTimers: {},
+  soundEnabled: true,
   setBindings: (bindings) => set({ bindings }),
   addBinding: (binding) =>
     set((s) => ({ bindings: [...s.bindings, binding] })),
@@ -55,23 +58,65 @@ export const useTimerStore = create<TimerStore>((set) => ({
       ),
     })),
   updateTimer: (bindingId, state) =>
-    set((s) => ({
-      activeTimers: {
-        ...s.activeTimers,
-        [bindingId]: { ...s.activeTimers[bindingId], ...state } as TimerState,
-      },
-    })),
+    set((s) => {
+      console.log("[Store] updateTimer called:", bindingId, state);
+      const prev = s.activeTimers[bindingId];
+      if (prev) {
+        const merged = { ...prev, ...state };
+        console.log("[Store] updateTimer merged:", merged);
+        return {
+          activeTimers: { ...s.activeTimers, [bindingId]: merged },
+        };
+      }
+      const defaults: TimerState = {
+        bindingId,
+        appName: "",
+        elapsedSeconds: 0,
+        isRunning: false,
+        pomodoroState: "idle",
+        pomodoroRemaining: 0,
+        pomodoroIndex: 0,
+        sessionCount: 0,
+      };
+      const created = { ...defaults, ...state };
+      console.log("[Store] updateTimer created:", created);
+      return {
+        activeTimers: { ...s.activeTimers, [bindingId]: created },
+      };
+    }),
   updatePomodoro: (bindingId, state, remaining, index, sessionCount) =>
-    set((s) => ({
-      activeTimers: {
-        ...s.activeTimers,
-        [bindingId]: {
-          ...s.activeTimers[bindingId],
+    set((s) => {
+      console.log("[Store] updatePomodoro called:", bindingId, state, remaining);
+      const prev = s.activeTimers[bindingId];
+      if (prev) {
+        const merged = {
+          ...prev,
           pomodoroState: state as TimerState["pomodoroState"],
           pomodoroRemaining: remaining,
           pomodoroIndex: index,
           sessionCount,
-        } as TimerState,
-      },
-    })),
+        };
+        console.log("[Store] updatePomodoro merged:", merged);
+        return {
+          activeTimers: { ...s.activeTimers, [bindingId]: merged },
+        };
+      }
+      console.log("[Store] updatePomodoro created new entry");
+      return {
+        activeTimers: {
+          ...s.activeTimers,
+          [bindingId]: {
+            bindingId,
+            appName: "",
+            elapsedSeconds: 0,
+            isRunning: false,
+            pomodoroState: state as TimerState["pomodoroState"],
+            pomodoroRemaining: remaining,
+            pomodoroIndex: index,
+            sessionCount,
+          },
+        },
+      };
+    }),
+  setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
 }));

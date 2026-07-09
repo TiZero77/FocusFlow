@@ -59,6 +59,18 @@ export async function getTimerStates(): Promise<TimerUpdate[]> {
   return invoke("get_timer_states");
 }
 
+export interface PomodoroStateUpdate {
+  bindingId: string;
+  state: string;
+  remainingSeconds: number;
+  pomodoroIndex: number;
+  sessionCount: number;
+}
+
+export async function getPomodoroStates(): Promise<PomodoroStateUpdate[]> {
+  return invoke("get_pomodoro_states");
+}
+
 // ── Events ──
 
 export function onTimerUpdate(callback: (update: TimerUpdate) => void) {
@@ -97,4 +109,18 @@ export interface UsageRecord {
 
 export async function getUsageRecords(date: string): Promise<UsageRecord[]> {
   return invoke("get_usage_records", { date });
+}
+
+// ── Settings ──
+
+export async function getSetting(key: string): Promise<string | null> {
+  return invoke("get_setting", { key });
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  return invoke("set_setting", { key, value });
+}
+
+export async function clearAllData(): Promise<void> {
+  return invoke("clear_all_data");
 }

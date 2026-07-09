@@ -4,6 +4,7 @@ use tauri::State;
 use crate::db::Database;
 use crate::models::{AppBinding, ForegroundApp, UsageRecord};
 use crate::monitor;
+use crate::pomodoro::{PomodoroEngine, PomodoroUpdate};
 use crate::timer::{TimerEngine, TimerUpdate};
 
 // ── Binding Commands ──
@@ -17,6 +18,7 @@ pub fn get_bindings(db: State<'_, Arc<Database>>) -> Result<Vec<AppBinding>, Str
 pub fn create_binding(
     db: State<'_, Arc<Database>>,
     engine: State<'_, TimerEngine>,
+    pomodoro: State<'_, PomodoroEngine>,
     app_name: String,
     bundle_id: String,
     icon_path: String,
@@ -28,6 +30,11 @@ pub fn create_binding(
     let bindings = crate::db::get_bindings(&db).unwrap_or_default();
     engine.set_bindings(bindings);
 
+    // Start pomodoro session for the new binding
+    if binding.pomodoro_enabled {
+        pomodoro.start_session(&binding);
+    }
+
     Ok(binding)
 }
 
@@ -35,13 +42,23 @@ pub fn create_binding(
 pub fn delete_binding(
     db: State<'_, Arc<Database>>,
     engine: State<'_, TimerEngine>,
+    pomodoro: State<'_, PomodoroEngine>,
     id: String,
 ) -> Result<(), String> {
+    // Find the binding's bundle_id before deleting
+    let bindings = crate::db::get_bindings(&db).unwrap_or_default();
+    let bundle_id = bindings.iter().find(|b| b.id == id).map(|b| b.bundle_id.clone());
+
     crate::db::delete_binding(&db, &id).map_err(|e| e.to_string())?;
 
     // Refresh timer engine bindings
     let bindings = crate::db::get_bindings(&db).unwrap_or_default();
     engine.set_bindings(bindings);
+
+    // Remove pomodoro session for the deleted binding
+    if let Some(bundle_id) = bundle_id {
+        pomodoro.remove_session(&bundle_id);
+    }
 
     Ok(())
 }
@@ -88,6 +105,30 @@ pub fn get_usage_records(
     date: String,
 ) -> Result<Vec<UsageRecord>, String> {
     crate::db::get_usage_records(&db, &date).map_err(|e| e.to_string())
+}
+
+// ── Pomodoro States ──
+
+#[tauri::command]
+pub fn get_pomodoro_states(engine: State<'_, PomodoroEngine>) -> Vec<PomodoroUpdate> {
+    engine.get_states()
+}
+
+// ── Settings ──
+
+#[tauri::command]
+pub fn get_setting(db: State<'_, Arc<Database>>, key: String) -> Result<Option<String>, String> {
+    crate::db::get_setting(&db, &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_setting(db: State<'_, Arc<Database>>, key: String, value: String) -> Result<(), String> {
+    crate::db::set_setting(&db, &key, &value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_all_data(db: State<'_, Arc<Database>>) -> Result<(), String> {
+    crate::db::clear_all_data(&db).map_err(|e| e.to_string())
 }
 
 // ── Health Check ──
