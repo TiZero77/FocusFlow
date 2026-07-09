@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Timer, Shield, Plus, ArrowRight, Check } from "lucide-react";
+import { Timer, Plus, ArrowRight, Check } from "lucide-react";
 import { getRunningApps, createBinding } from "../lib/tauri";
 import { useTimerStore } from "../stores/timerStore";
 import type { ForegroundApp } from "../lib/tauri";
@@ -68,59 +68,6 @@ export default function Onboarding({ onComplete }: Props) {
         )}
 
         {step === 1 && (
-          <div className="flex flex-col items-center gap-6">
-            <div
-              className="w-20 h-20 rounded-3xl flex items-center justify-center"
-              style={{
-                background: "var(--accent-warning)",
-                boxShadow: "0 0 40px rgba(245,158,11,0.3)",
-              }}
-            >
-              <Shield size={36} color="#fff" />
-            </div>
-            <h1
-              className="text-2xl font-semibold"
-              style={{ color: "var(--text-primary)" }}
-            >
-              需要一个小权限
-            </h1>
-            <p
-              className="text-sm leading-relaxed max-w-[320px]"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              为了检测你在用哪个 app，需要在系统设置中授予辅助功能权限。
-              这不会收集任何数据，仅用于本地检测。
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep(2)}
-                className="px-6 py-3 rounded-xl text-sm font-medium transition-all hover:opacity-90"
-                style={{
-                  background: "var(--bg-tertiary)",
-                  color: "var(--text-secondary)",
-                }}
-              >
-                稍后设置
-              </button>
-              <button
-                onClick={() => {
-                  // Open System Preferences on macOS
-                  window.open(
-                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-                  );
-                  setStep(2);
-                }}
-                className="flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-medium transition-all hover:opacity-90 active:scale-[0.98]"
-                style={{ background: "var(--accent-focus)", color: "#fff" }}
-              >
-                授权
-                <ArrowRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 2 && (
           <div className="flex flex-col items-center gap-6">
             <h1
               className="text-2xl font-semibold"

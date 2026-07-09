@@ -47,17 +47,25 @@ pub fn delete_binding(
 ) -> Result<(), String> {
     // Find the binding's bundle_id before deleting
     let bindings = crate::db::get_bindings(&db).unwrap_or_default();
-    let bundle_id = bindings.iter().find(|b| b.id == id).map(|b| b.bundle_id.clone());
+    let binding = bindings.iter().find(|b| b.id == id);
 
-    crate::db::delete_binding(&db, &id).map_err(|e| e.to_string())?;
+    if let Some(binding) = binding {
+        let bundle_id = binding.bundle_id.clone();
 
-    // Refresh timer engine bindings
-    let bindings = crate::db::get_bindings(&db).unwrap_or_default();
-    engine.set_bindings(bindings);
+        // Delete from database
+        crate::db::delete_binding(&db, &id).map_err(|e| e.to_string())?;
 
-    // Remove pomodoro session for the deleted binding
-    if let Some(bundle_id) = bundle_id {
+        // Remove timer from engine
+        engine.remove_timer(&id);
+
+        // Refresh timer engine bindings
+        let bindings = crate::db::get_bindings(&db).unwrap_or_default();
+        engine.set_bindings(bindings);
+
+        // Remove pomodoro session
         pomodoro.remove_session(&bundle_id);
+    } else {
+        return Err("Binding not found".to_string());
     }
 
     Ok(())

@@ -23,14 +23,17 @@ export default function TrendsPage() {
     getBindings().catch(console.error);
   }, []);
 
-  // Fetch last 7 days of data
+  // Fetch last 7 days of data (use local dates)
   useEffect(() => {
     const fetchWeek = async () => {
       const days: DayData[] = [];
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split("T")[0];
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        const dateStr = `${year}-${month}-${day}`;
         const records = await getUsageRecords(dateStr).catch(() => []);
         const totalSeconds = records.reduce(
           (sum: number, r: UsageRecord) => sum + r.durationSeconds,

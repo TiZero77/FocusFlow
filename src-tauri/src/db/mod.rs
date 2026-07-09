@@ -100,10 +100,33 @@ pub fn get_bindings(db: &Database) -> Result<Vec<AppBinding>> {
 pub fn create_binding(db: &Database, app_name: &str, bundle_id: &str, icon_path: &str) -> Result<AppBinding> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono_now();
+
+    // Read global pomodoro settings as defaults
+    let focus_minutes = get_setting(db, "focus_minutes")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(25);
+    let break_minutes = get_setting(db, "break_minutes")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(5);
+    let long_break_minutes = get_setting(db, "long_break_minutes")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(15);
+    let long_break_interval = get_setting(db, "long_break_interval")
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i32>().ok())
+        .unwrap_or(4);
+
     let conn = db.conn.lock().unwrap();
     conn.execute(
-        "INSERT INTO app_bindings (id, app_name, bundle_id, icon_path, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-        (&id, app_name, bundle_id, icon_path, now),
+        "INSERT INTO app_bindings (id, app_name, bundle_id, icon_path, focus_minutes, break_minutes, long_break_minutes, long_break_interval, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        (&id, app_name, bundle_id, icon_path, focus_minutes, break_minutes, long_break_minutes, long_break_interval, now),
     )?;
     Ok(AppBinding {
         id,
@@ -112,16 +135,19 @@ pub fn create_binding(db: &Database, app_name: &str, bundle_id: &str, icon_path:
         icon_path: icon_path.to_string(),
         tracking_enabled: true,
         pomodoro_enabled: true,
-        focus_minutes: 25,
-        break_minutes: 5,
-        long_break_minutes: 15,
-        long_break_interval: 4,
+        focus_minutes,
+        break_minutes,
+        long_break_minutes,
+        long_break_interval,
         created_at: now,
     })
 }
 
 pub fn delete_binding(db: &Database, id: &str) -> Result<()> {
     let conn = db.conn.lock().unwrap();
+    // Delete related records first (cascade)
+    conn.execute("DELETE FROM usage_records WHERE binding_id = ?1", (id,))?;
+    conn.execute("DELETE FROM pomodoro_sessions WHERE binding_id = ?1", (id,))?;
     conn.execute("DELETE FROM app_bindings WHERE id = ?1", (id,))?;
     Ok(())
 }
@@ -228,7 +254,7 @@ pub fn set_setting(db: &Database, key: &str, value: &str) -> Result<()> {
 pub fn clear_all_data(db: &Database) -> Result<()> {
     let conn = db.conn.lock().unwrap();
     conn.execute_batch(
-        "DELETE FROM usage_records; DELETE FROM pomodoro_sessions; DELETE FROM settings;",
+        "DELETE FROM usage_records; DELETE FROM pomodoro_sessions; DELETE FROM app_bindings; DELETE FROM settings;",
     )?;
     Ok(())
 }
@@ -243,8 +269,12 @@ fn chrono_now() -> i64 {
 }
 
 fn timestamp_to_date(ts: i64) -> String {
-    // Simple date calculation (UTC)
-    let days = ts / 86400;
+    // Use local time for date calculation
+    // Approximate local time offset (UTC+8 for China)
+    // This is a simplification - ideally use chrono crate for proper timezone handling
+    let local_offset = 8 * 3600; // UTC+8
+    let local_ts = ts + local_offset;
+    let days = local_ts / 86400;
     let (y, m, d) = days_to_ymd(days + 719468);
     format!("{:04}-{:02}-{:02}", y, m, d)
 }

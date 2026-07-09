@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
+import { Plus, Search, Trash2, Loader2, Link2 } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings, deleteBinding } from "../lib/tauri";
 import AddBindingModal from "./AddBindingModal";
@@ -7,19 +7,22 @@ import AddBindingModal from "./AddBindingModal";
 export default function BindingsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [deleting, setDeleting] = useState<string | null>(null);
   const { bindings, setBindings, removeBinding } = useTimerStore();
 
-  // Load bindings on mount
   useEffect(() => {
     getBindings().then(setBindings).catch(console.error);
   }, [setBindings]);
 
   const handleDelete = async (id: string) => {
+    setDeleting(id);
     try {
       await deleteBinding(id);
       removeBinding(id);
     } catch (err) {
       console.error("Failed to delete binding:", err);
+    } finally {
+      setDeleting(null);
     }
   };
 
@@ -28,76 +31,82 @@ export default function BindingsPage() {
   );
 
   return (
-    <div className="p-8 max-w-[960px] mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <h1
-          className="text-2xl font-semibold"
-          style={{ color: "var(--text-primary)" }}
-        >
-          绑定管理
-        </h1>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all hover:opacity-90 active:scale-[0.98]"
-          style={{ background: "var(--accent-focus)", color: "#fff" }}
-        >
-          <Plus size={16} />
-          添加绑定
-        </button>
-      </div>
+    <div className="h-full overflow-y-auto">
+      <div className="p-10 max-w-[1080px] mx-auto animate-fade-in">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-10">
+          <div>
+            <h1 className="text-3xl font-semibold" style={{ color: "var(--text-primary)" }}>
+              绑定管理
+            </h1>
+            <p className="text-sm mt-2" style={{ color: "var(--text-tertiary)" }}>
+              管理你追踪的应用
+            </p>
+          </div>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-5 py-3 rounded-xl text-sm font-medium"
+            style={{ background: "var(--gradient-focus)", color: "#fff" }}
+          >
+            <Plus size={16} />
+            添加绑定
+          </button>
+        </div>
 
-      {/* Search */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 rounded-xl mb-6"
-        style={{ background: "var(--bg-secondary)" }}
-      >
-        <Search size={18} style={{ color: "var(--text-tertiary)" }} />
-        <input
-          type="text"
-          placeholder="搜索已绑定的 app..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="bg-transparent border-none outline-none text-sm flex-1"
-          style={{ color: "var(--text-primary)" }}
-        />
-      </div>
-
-      {/* Bindings list */}
-      {filtered.length === 0 ? (
+        {/* Search */}
         <div
-          className="flex flex-col items-center justify-center h-64 rounded-xl"
+          className="flex items-center gap-3 px-5 py-4 rounded-xl mb-8"
           style={{ background: "var(--bg-secondary)" }}
         >
-          <div
-            className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
-            style={{ background: "var(--bg-tertiary)" }}
-          >
-            <Plus size={24} style={{ color: "var(--text-tertiary)" }} />
-          </div>
-          <p className="text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
-            {searchQuery ? "没有匹配的绑定" : "还没有绑定任何 app"}
-          </p>
-          <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-            {searchQuery ? "尝试其他关键词" : "点击「添加绑定」开始追踪你的时间"}
-          </p>
+          <Search size={18} style={{ color: "var(--text-tertiary)" }} />
+          <input
+            type="text"
+            placeholder="搜索已绑定的 app..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="bg-transparent border-none outline-none text-sm flex-1"
+            style={{ color: "var(--text-primary)" }}
+          />
         </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {filtered.map((binding) => (
-            <BindingCard
-              key={binding.id}
-              name={binding.appName}
-              bundleId={binding.bundleId}
-              trackingEnabled={binding.trackingEnabled}
-              pomodoroEnabled={binding.pomodoroEnabled}
-              onDelete={() => handleDelete(binding.id)}
-            />
-          ))}
-        </div>
-      )}
 
-      <AddBindingModal open={modalOpen} onClose={() => setModalOpen(false)} />
+        {/* Bindings list */}
+        {filtered.length === 0 ? (
+          <div
+            className="flex flex-col items-center justify-center h-72 rounded-2xl"
+            style={{ background: "var(--bg-secondary)" }}
+          >
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5"
+              style={{ background: "var(--bg-tertiary)" }}
+            >
+              <Link2 size={24} style={{ color: "var(--text-tertiary)" }} />
+            </div>
+            <p className="text-sm mb-2" style={{ color: "var(--text-secondary)" }}>
+              {searchQuery ? "没有匹配的绑定" : "还没有绑定任何 app"}
+            </p>
+            <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+              {searchQuery ? "尝试其他关键词" : "点击「添加绑定」开始追踪你的时间"}
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {filtered.map((binding) => (
+              <BindingCard
+                key={binding.id}
+                id={binding.id}
+                name={binding.appName}
+                bundleId={binding.bundleId}
+                trackingEnabled={binding.trackingEnabled}
+                pomodoroEnabled={binding.pomodoroEnabled}
+                isDeleting={deleting === binding.id}
+                onDelete={() => handleDelete(binding.id)}
+              />
+            ))}
+          </div>
+        )}
+
+        <AddBindingModal open={modalOpen} onClose={() => setModalOpen(false)} />
+      </div>
     </div>
   );
 }
@@ -107,39 +116,45 @@ function BindingCard({
   bundleId,
   trackingEnabled,
   pomodoroEnabled,
+  isDeleting,
   onDelete,
 }: {
+  id: string;
   name: string;
   bundleId: string;
   trackingEnabled: boolean;
   pomodoroEnabled: boolean;
+  isDeleting: boolean;
   onDelete: () => void;
 }) {
   return (
     <div
-      className="flex items-center gap-4 px-5 py-4 rounded-xl transition-colors hover:bg-white/[0.02]"
+      className="flex items-center gap-5 px-6 py-5 rounded-2xl card-hover"
       style={{ background: "var(--bg-secondary)" }}
     >
       {/* Icon */}
       <div
-        className="w-12 h-12 rounded-xl flex items-center justify-center text-xl font-semibold shrink-0"
-        style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+        className="w-14 h-14 rounded-xl flex items-center justify-center text-xl font-semibold shrink-0"
+        style={{
+          background: "var(--gradient-focus)",
+          color: "#fff",
+        }}
       >
         {name.charAt(0).toUpperCase()}
       </div>
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+        <div className="text-base font-medium" style={{ color: "var(--text-primary)" }}>
           {name}
         </div>
-        <div className="text-xs truncate" style={{ color: "var(--text-tertiary)" }}>
-          {bundleId}
+        <div className="text-xs mt-1 truncate" style={{ color: "var(--text-tertiary)" }}>
+          {bundleId.split("\\").pop() || bundleId}
         </div>
       </div>
 
       {/* Status badges */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
         <StatusBadge
           label="追踪"
           active={trackingEnabled}
@@ -155,10 +170,15 @@ function BindingCard({
       {/* Delete */}
       <button
         onClick={onDelete}
-        className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors hover:bg-red-500/10"
+        disabled={isDeleting}
+        className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors hover:bg-red-500/10 disabled:opacity-50"
         title="删除绑定"
       >
-        <Trash2 size={16} style={{ color: "var(--accent-danger)" }} />
+        {isDeleting ? (
+          <Loader2 size={18} className="animate-spin" style={{ color: "var(--accent-danger)" }} />
+        ) : (
+          <Trash2 size={18} style={{ color: "var(--accent-danger)" }} />
+        )}
       </button>
     </div>
   );
@@ -175,13 +195,16 @@ function StatusBadge({
 }) {
   return (
     <div
-      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
+      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium"
       style={{
-        background: active ? `${color}15` : "var(--bg-tertiary)",
+        background: active ? `${color}20` : "var(--bg-tertiary)",
         color: active ? color : "var(--text-tertiary)",
       }}
     >
-      {active ? <ToggleRight size={12} /> : <ToggleLeft size={12} />}
+      <div
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ background: active ? color : "var(--text-tertiary)" }}
+      />
       {label}
     </div>
   );

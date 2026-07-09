@@ -22,39 +22,22 @@ fn emit_to_all<S: serde::Serialize + Clone>(app_handle: &tauri::AppHandle, event
     }
 }
 
-/// Get system idle time in seconds
-#[cfg(target_os = "macos")]
+/// Get system idle time in seconds (Windows only)
 fn get_idle_seconds() -> f64 {
-    extern "C" {
-        fn CGEventSourceSecondsSinceLastEventType(
-            state: u32,    // CGEventSourceStateID
-            event_type: u32, // CGEventType
-        ) -> f64;
-    }
-    // kCGEventSourceStateHIDSystemState = 1, kCGEventNull = 0
-    unsafe { CGEventSourceSecondsSinceLastEventType(1, 0) }
-}
-
-#[cfg(target_os = "windows")]
-fn get_idle_seconds() -> f64 {
-    use windows::Win32::UI::WindowsAndMessaging::{GetLastInputInfo, LASTINPUTINFO};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+    use windows::Win32::System::SystemInformation::GetTickCount;
     unsafe {
         let mut info = LASTINPUTINFO {
             cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
             dwTime: 0,
         };
         if GetLastInputInfo(&mut info).as_bool() {
-            let tick = windows::Win32::UI::WindowsAndMessaging::GetTickCount();
+            let tick = GetTickCount();
             ((tick - info.dwTime) as f64) / 1000.0
         } else {
             0.0
         }
     }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn get_idle_seconds() -> f64 {
-    0.0
 }
 
 /// Active timer state for a bound app
@@ -64,6 +47,7 @@ struct ActiveTimer {
     app_name: String,
     start_time: i64,
     elapsed_seconds: i64,
+    is_running: bool,
 }
 
 /// TimerEngine — monitors foreground app and manages timers
@@ -149,11 +133,13 @@ impl TimerEngine {
                 let was_idle = *idle_paused.lock().unwrap();
 
                 if is_currently_idle && !was_idle {
-                    // Just became idle — pause everything
+                    // Just became idle — pause all running timers
                     *idle_paused.lock().unwrap() = true;
-                    let stopped_ids = pause_all_timers(&active_timers, &db);
-                    for bundle_id in &stopped_ids {
-                        pomodoro.pause_session(bundle_id);
+                    pause_all_timers(&active_timers);
+                    for (_, timer) in active_timers.lock().unwrap().iter() {
+                        if timer.is_running {
+                            pomodoro.pause_session(&timer.binding_id);
+                        }
                     }
                     emit_to_all(&app_handle, "idle-changed", true);
                 } else if !is_currently_idle && was_idle {
@@ -173,7 +159,7 @@ impl TimerEngine {
                         };
 
                         if let Some(binding) = binding {
-                            start_timer(&binding, &active_timers);
+                            resume_timer(&binding, &active_timers);
                             pomodoro.resume_session(&binding.bundle_id);
                         }
                     }
@@ -203,13 +189,13 @@ impl TimerEngine {
 
                     // Check if app changed
                     if current_bundle.as_deref() != Some(&new_bundle) {
-                        // App changed — stop timer and pause pomodoro for previous app
+                        // App changed — pause timer for previous app (don't stop/remove)
                         if let Some(prev_bundle) = &current_bundle {
-                            stop_timer(prev_bundle, &active_timers, &db);
+                            pause_timer(prev_bundle, &active_timers);
                             pomodoro.pause_session(prev_bundle);
                         }
 
-                        // Start timer and resume pomodoro for new app if bound
+                        // Resume or start timer for new app if bound
                         let binding = {
                             let lock = bindings.lock().unwrap();
                             lock.iter()
@@ -218,7 +204,7 @@ impl TimerEngine {
                         };
 
                         if let Some(binding) = binding {
-                            start_timer(&binding, &active_timers);
+                            resume_or_start_timer(&binding, &active_timers);
                             pomodoro.resume_session(&binding.bundle_id);
                             emit_to_all(
                                 &app_handle,
@@ -242,19 +228,43 @@ impl TimerEngine {
                         }
 
                         *current_app.lock().unwrap() = Some(new_bundle);
+                    } else {
+                        // Same app — check if we need to start a timer for it
+                        // This handles the case where a binding was created while the app was already in foreground
+                        let has_active_timer = {
+                            let lock = active_timers.lock().unwrap();
+                            lock.contains_key(&new_bundle)
+                        };
+
+                        if !has_active_timer {
+                            let binding = {
+                                let lock = bindings.lock().unwrap();
+                                lock.iter()
+                                    .find(|b| b.bundle_id == new_bundle && b.tracking_enabled)
+                                    .cloned()
+                            };
+
+                            if let Some(binding) = binding {
+                                log::info!("[Timer] starting timer for already-focused app: {}", binding.app_name);
+                                resume_or_start_timer(&binding, &active_timers);
+                                pomodoro.resume_session(&binding.bundle_id);
+                            }
+                        }
                     }
 
-                    // Update elapsed time for active timers
+                    // Update elapsed time for active timers that are running
                     let timer_count = active_timers.lock().unwrap().len();
                     log::info!("[Timer] active_timers count: {}, calling update_timers", timer_count);
                     update_timers(&active_timers, &app_handle);
                 } else {
                     log::info!("[Timer] no foreground app detected");
                     if current_bundle.is_some() {
-                        // No foreground app — stop all timers and pause all pomodoros
-                        let stopped_bundle_ids = stop_all_timers(&active_timers, &db);
-                        for bundle_id in &stopped_bundle_ids {
-                            pomodoro.pause_session(bundle_id);
+                        // No foreground app — pause all timers (don't remove)
+                        pause_all_timers(&active_timers);
+                        for (_, timer) in active_timers.lock().unwrap().iter() {
+                            if timer.is_running {
+                                pomodoro.pause_session(&timer.binding_id);
+                            }
                         }
                         *current_app.lock().unwrap() = None;
                     }
@@ -270,6 +280,20 @@ impl TimerEngine {
         *self.running.lock().unwrap() = false;
     }
 
+    /// Remove a specific timer by binding_id (used when deleting a binding)
+    pub fn remove_timer(&self, binding_id: &str) {
+        let mut lock = self.active_timers.lock().unwrap();
+        // Find and remove the timer with matching binding_id
+        let key_to_remove = lock
+            .iter()
+            .find(|(_, t)| t.binding_id == binding_id)
+            .map(|(k, _)| k.clone());
+        if let Some(key) = key_to_remove {
+            lock.remove(&key);
+            log::info!("[Timer] removed timer for binding {}", binding_id);
+        }
+    }
+
     /// Save all active timers to database (call on app exit)
     pub fn save_all(&self, db: &Arc<Database>) {
         let timers: Vec<(String, ActiveTimer)> = {
@@ -283,12 +307,14 @@ impl TimerEngine {
             .as_secs() as i64;
 
         for (_bundle_id, timer) in timers {
-            let _ = db::create_usage_record(
-                db,
-                &timer.binding_id,
-                timer.start_time,
-                now,
-            );
+            if timer.elapsed_seconds > 0 {
+                let _ = db::create_usage_record(
+                    db,
+                    &timer.binding_id,
+                    timer.start_time,
+                    now,
+                );
+            }
         }
     }
 
@@ -300,12 +326,13 @@ impl TimerEngine {
                 binding_id: t.binding_id.clone(),
                 app_name: t.app_name.clone(),
                 elapsed_seconds: t.elapsed_seconds,
-                is_running: true,
+                is_running: t.is_running,
             })
             .collect()
     }
 }
 
+/// Start a new timer for a binding
 fn start_timer(binding: &AppBinding, active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -317,12 +344,53 @@ fn start_timer(binding: &AppBinding, active_timers: &Arc<Mutex<HashMap<String, A
         app_name: binding.app_name.clone(),
         start_time: now,
         elapsed_seconds: 0,
+        is_running: true,
     };
 
     let mut lock = active_timers.lock().unwrap();
     lock.insert(binding.bundle_id.clone(), timer);
 }
 
+/// Resume an existing timer or start a new one
+fn resume_or_start_timer(binding: &AppBinding, active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>) {
+    let mut lock = active_timers.lock().unwrap();
+    if let Some(timer) = lock.get_mut(&binding.bundle_id) {
+        // Resume existing timer
+        timer.is_running = true;
+        log::info!("[Timer] resumed timer for {} with {}s elapsed", binding.app_name, timer.elapsed_seconds);
+    } else {
+        // Start new timer
+        drop(lock);
+        start_timer(binding, active_timers);
+    }
+}
+
+/// Resume a paused timer (set is_running to true)
+fn resume_timer(binding: &AppBinding, active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>) {
+    let mut lock = active_timers.lock().unwrap();
+    if let Some(timer) = lock.get_mut(&binding.bundle_id) {
+        timer.is_running = true;
+    }
+}
+
+/// Pause a timer (set is_running to false, but keep it in the map)
+fn pause_timer(bundle_id: &str, active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>) {
+    let mut lock = active_timers.lock().unwrap();
+    if let Some(timer) = lock.get_mut(bundle_id) {
+        timer.is_running = false;
+        log::info!("[Timer] paused timer for {} with {}s elapsed", timer.app_name, timer.elapsed_seconds);
+    }
+}
+
+/// Pause all running timers
+fn pause_all_timers(active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>) {
+    let mut lock = active_timers.lock().unwrap();
+    for (_, timer) in lock.iter_mut() {
+        timer.is_running = false;
+    }
+}
+
+/// Stop a timer and save to database
 fn stop_timer(
     bundle_id: &str,
     active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>,
@@ -334,45 +402,23 @@ fn stop_timer(
     };
 
     if let Some(timer) = timer {
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        if timer.elapsed_seconds > 0 {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
 
-        // Save usage record to database
-        let _ = db::create_usage_record(
-            db,
-            &timer.binding_id,
-            timer.start_time,
-            now,
-        );
+            let _ = db::create_usage_record(
+                db,
+                &timer.binding_id,
+                timer.start_time,
+                now,
+            );
+        }
     }
 }
 
-/// Pause all timers: save elapsed to DB, clear entries so they restart cleanly on resume
-fn pause_all_timers(
-    active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>,
-    db: &Arc<Database>,
-) -> Vec<String> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
-    let mut lock = active_timers.lock().unwrap();
-    let mut bundle_ids = Vec::new();
-    for (bundle_id, timer) in lock.drain() {
-        let _ = db::create_usage_record(
-            db,
-            &timer.binding_id,
-            timer.start_time,
-            now,
-        );
-        bundle_ids.push(bundle_id);
-    }
-    bundle_ids
-}
-
+/// Stop all timers and save to database
 fn stop_all_timers(
     active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>,
     db: &Arc<Database>,
@@ -389,17 +435,20 @@ fn stop_all_timers(
 
     let mut bundle_ids = Vec::new();
     for (bundle_id, timer) in timers {
-        let _ = db::create_usage_record(
-            db,
-            &timer.binding_id,
-            timer.start_time,
-            now,
-        );
+        if timer.elapsed_seconds > 0 {
+            let _ = db::create_usage_record(
+                db,
+                &timer.binding_id,
+                timer.start_time,
+                now,
+            );
+        }
         bundle_ids.push(bundle_id);
     }
     bundle_ids
 }
 
+/// Update elapsed time for running timers and emit updates
 fn update_timers(
     active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>,
     app_handle: &tauri::AppHandle,
@@ -407,6 +456,7 @@ fn update_timers(
     let updates: Vec<TimerUpdate> = {
         let mut lock = active_timers.lock().unwrap();
         lock.values_mut()
+            .filter(|t| t.is_running)
             .map(|t| {
                 t.elapsed_seconds += 1;
                 log::info!(

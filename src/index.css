@@ -1,40 +1,58 @@
 @import "tailwindcss";
 
-/* FocusFlow Design System — Dark Immersive + Minimal Clean */
+/* FocusFlow Design System — 温暖活力风 */
+
 :root {
-  /* Background */
-  --bg-primary: #0a0a0b;
-  --bg-secondary: #141416;
-  --bg-tertiary: #1c1c1f;
+  /* 背景色 - 暖色调 */
+  --bg-primary: #1C1917;
+  --bg-secondary: #292524;
+  --bg-tertiary: #44403C;
+  --bg-hover: #57534E;
 
-  /* Text */
-  --text-primary: #f5f5f7;
-  --text-secondary: #8e8e93;
-  --text-tertiary: #48484a;
+  /* 强调色 - 温暖活力 */
+  --accent-focus: #F97316;
+  --accent-break: #22C55E;
+  --accent-long-break: #A78BFA;
+  --accent-pause: #78716C;
+  --accent-danger: #EF4444;
+  --accent-warning: #F59E0B;
 
-  /* Accent */
-  --accent-focus: #3b82f6;
-  --accent-break: #22c55e;
-  --accent-pause: #6b7280;
-  --accent-warning: #f59e0b;
-  --accent-danger: #ef4444;
+  /* 文字色 - 暖白 */
+  --text-primary: #FAFAF9;
+  --text-secondary: #A8A29E;
+  --text-tertiary: #78716C;
 
-  /* Gradient */
-  --gradient-glow: radial-gradient(
-    ellipse at center,
-    rgba(59, 130, 246, 0.15),
-    transparent
-  );
+  /* 渐变 */
+  --gradient-focus: linear-gradient(135deg, #F97316, #FB923C);
+  --gradient-break: linear-gradient(135deg, #22C55E, #4ADE80);
+  --gradient-long-break: linear-gradient(135deg, #A78BFA, #C4B5FD);
 
-  /* Radius */
-  --radius-sm: 6px;
-  --radius-md: 10px;
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
   --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
 
-  /* Shadow */
+  /* 阴影 */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-glow-focus: 0 0 20px rgba(249, 115, 22, 0.3);
+  --shadow-glow-break: 0 0 20px rgba(34, 197, 94, 0.3);
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* 过渡 */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
 }
 
 * {
@@ -43,17 +61,18 @@
   box-sizing: border-box;
 }
 
-html,
-body,
-#root {
+html, body, #root {
   height: 100%;
   width: 100%;
   overflow: hidden;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
-    "Helvetica Neue", sans-serif;
+  /* 开源免费字体：
+     中文: "Noto Sans SC" (Google, OFL), "Microsoft YaHei" (Windows系统自带)
+     英文: "Segoe UI" (Windows系统自带), system-ui (系统默认)
+  */
+  font-family: "Noto Sans SC", "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
@@ -62,7 +81,13 @@ body {
   scrollbar-color: var(--text-tertiary) transparent;
 }
 
-/* Scrollbar styling */
+/* 等宽数字字体 - 全部开源免费 */
+.font-mono {
+  /* "JetBrains Mono" (Apache 2.0), "Fira Code" (MIT), "Cascadia Code" (MIT), "Source Code Pro" (OFL) */
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro", "Consolas", monospace;
+}
+
+/* 滚动条 */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -75,4 +100,137 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-secondary);
+}
+
+/* Select 下拉框 */
+select {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--bg-hover);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+select:hover {
+  border-color: var(--accent-focus);
+}
+
+select option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+/* Range 滑块 */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--bg-tertiary);
+  border-radius: 2px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-focus);
+  cursor: pointer;
+  border: 2px solid var(--bg-primary);
+  box-shadow: var(--shadow-glow-focus);
+}
+
+/* 按钮基础样式 */
+button {
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  outline: none;
+  transition: all var(--transition-fast);
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* 卡片悬浮效果 */
+.card-hover {
+  transition: all var(--transition-normal);
+}
+
+.card-hover:hover {
+  background: var(--bg-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+/* 焦点可见性 */
+:focus-visible {
+  outline: 2px solid var(--accent-focus);
+  outline-offset: 2px;
+}
+
+/* 禁止文本选择 */
+.select-none {
+  user-select: none;
+}
+
+/* 拖拽区域 */
+[data-tauri-drag-region] {
+  cursor: grab;
+}
+
+[data-tauri-drag-region]:active {
+  cursor: grabbing;
+}
+
+/* 动画 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 200ms ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
 }

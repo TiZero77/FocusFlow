@@ -151,17 +151,19 @@ pub fn run() {
                 if let Ok(Some(pos_x)) = crate::db::get_setting(&db_ref, "widget_x") {
                     if let Ok(Some(pos_y)) = crate::db::get_setting(&db_ref, "widget_y") {
                         if let (Ok(x), Ok(y)) = (pos_x.parse::<f64>(), pos_y.parse::<f64>()) {
-                            let _ = widget_window.set_position(tauri::Position::Logical(
-                                tauri::LogicalPosition::new(x, y),
+                            // Use PhysicalPosition since we save physical pixels
+                            let _ = widget_window.set_position(tauri::Position::Physical(
+                                tauri::PhysicalPosition::new(x as i32, y as i32),
                             ));
                         }
                     }
                 }
 
-                // Save widget position on move
+                // Save widget position on move (save physical pixels)
                 let db_widget = db_ref.clone();
                 widget_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::Moved(pos) = event {
+                        // pos is PhysicalPosition<i32>
                         let _ = crate::db::set_setting(
                             &db_widget,
                             "widget_x",

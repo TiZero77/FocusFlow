@@ -28,16 +28,15 @@
         "title": "FocusFlow Widget",
         "label": "widget",
         "url": "/widget",
-        "width": 220,
-        "height": 120,
+        "width": 180,
+        "height": 80,
         "resizable": false,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "visible": true,
-        "x": 1600,
-        "y": 50
+        "center": true
       }
     ],
     "security": {

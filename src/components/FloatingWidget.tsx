@@ -1,16 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { Coffee, Flame } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   getBindings,
   getTimerStates,
   getPomodoroStates,
   getSetting,
-  setSetting,
   type PomodoroStateUpdate,
 } from "../lib/tauri";
-import { formatTimer, getPomodoroColor, getPomodoroLabel } from "../lib/utils";
-
-type WidgetSize = "small" | "medium" | "large" | "compact";
+import { formatTimer } from "../lib/utils";
 
 interface Binding {
   id: string;
@@ -20,76 +18,74 @@ interface Binding {
 
 export default function FloatingWidget() {
   const [bindings, setBindings] = useState<Binding[]>([]);
-  const [timers, setTimers] = useState<
-    Map<string, { elapsed: number; appName: string }>
-  >(new Map());
-  const [pomodoros, setPomodoros] = useState<
-    Map<string, PomodoroStateUpdate>
-  >(new Map());
-  const [size, setSize] = useState<WidgetSize>("medium");
+  const [pomodoros, setPomodoros] = useState<Map<string, PomodoroStateUpdate>>(new Map());
   const [hovered, setHovered] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
+  const [opacity, setOpacity] = useState(90);
+  const [focusMinutes, setFocusMinutes] = useState(25);
+  const [breakMinutes, setBreakMinutes] = useState(5);
+  const [longBreakMinutes, setLongBreakMinutes] = useState(15);
 
-  // Load bindings + size on mount
+  // Make body/html/root transparent to eliminate black edges at rounded corners
   useEffect(() => {
-    getBindings()
-      .then((b) => setBindings(b.map((x) => ({ id: x.id, appName: x.appName, bundleId: x.bundleId }))))
-      .catch(console.error);
-    getSetting("widget_size").then((v) => {
-      if (v && ["compact", "small", "medium", "large"].includes(v)) {
-        setSize(v as WidgetSize);
-      }
-    });
+    document.documentElement.style.background = "transparent";
+    document.body.style.background = "transparent";
+    const root = document.getElementById("root");
+    if (root) {
+      root.style.background = "transparent";
+      root.style.margin = "0";
+      root.style.padding = "0";
+    }
   }, []);
 
-  // Poll backend every second for timer + pomodoro state
+  // Load settings and poll for updates
+  useEffect(() => {
+    const loadSettings = () => {
+      getBindings()
+        .then((b) => setBindings(b.map((x) => ({ id: x.id, appName: x.appName, bundleId: x.bundleId }))))
+        .catch(console.error);
+      getSetting("widget_opacity").then((v) => { if (v) setOpacity(Number(v)); });
+      getSetting("focus_minutes").then((v) => { if (v) setFocusMinutes(Number(v)); });
+      getSetting("break_minutes").then((v) => { if (v) setBreakMinutes(Number(v)); });
+      getSetting("long_break_minutes").then((v) => { if (v) setLongBreakMinutes(Number(v)); });
+    };
+    loadSettings();
+    // Poll settings every 3 seconds to catch changes
+    const interval = setInterval(loadSettings, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Poll timer/pomodoro states
   useEffect(() => {
     const poll = async () => {
       try {
-        const [timerStates, pomodoroStates] = await Promise.all([
-          getTimerStates(),
-          getPomodoroStates(),
-        ]);
-
-        const newTimers = new Map<string, { elapsed: number; appName: string }>();
-        for (const t of timerStates) {
-          newTimers.set(t.bindingId, {
-            elapsed: t.elapsedSeconds,
-            appName: t.appName,
-          });
-        }
-        setTimers(newTimers);
-
+        const [, pomodoroStates] = await Promise.all([getTimerStates(), getPomodoroStates()]);
         const newPomodoros = new Map<string, PomodoroStateUpdate>();
-        for (const p of pomodoroStates) {
-          newPomodoros.set(p.bindingId, p);
-        }
+        for (const p of pomodoroStates) newPomodoros.set(p.bindingId, p);
         setPomodoros(newPomodoros);
       } catch (err) {
         console.error("Poll failed:", err);
       }
     };
-
     poll();
     const interval = setInterval(poll, 1000);
     return () => clearInterval(interval);
   }, []);
 
-  // Save size when it changes
-  const handleSizeChange = useCallback((s: WidgetSize) => {
-    setSize(s);
-    setSetting("widget_size", s).catch(console.error);
+  const handleMouseDown = useCallback(async (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === "BUTTON" || target.closest("button")) return;
+    try {
+      await getCurrentWindow().startDragging();
+    } catch (err) {
+      console.error("Failed to start dragging:", err);
+    }
   }, []);
 
-  // Click to open main window
   const handleClick = useCallback(async () => {
     try {
-      const allWindows = await import("@tauri-apps/api/webviewWindow").then(
-        (m) => m.getAllWebviewWindows()
-      );
+      const { getAllWebviewWindows } = await import("@tauri-apps/api/webviewWindow");
+      const allWindows = await getAllWebviewWindows();
       const main = allWindows.find((w) => w.label === "main");
       if (main) {
         await main.show();
@@ -100,422 +96,127 @@ export default function FloatingWidget() {
     }
   }, []);
 
-  // Right-click context menu
-  const handleContextMenu = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setContextMenu({ x: e.clientX, y: e.clientY });
-    },
-    []
-  );
-
-  useEffect(() => {
-    if (!contextMenu) return;
-    const close = () => setContextMenu(null);
-    window.addEventListener("click", close);
-    return () => window.removeEventListener("click", close);
-  }, [contextMenu]);
-
-  // Build display data: merge bindings + timers + pomodoros
+  // Get the first active pomodoro
   const firstPomodoro = pomodoros.values().next().value;
   const activeBindingId = firstPomodoro?.bindingId ?? bindings[0]?.id;
   const activeBinding = bindings.find((b) => b.id === activeBindingId);
-  const activePomodoro = activeBindingId
-    ? pomodoros.get(activeBindingId)
-    : undefined;
-  const activeTimer = activeBindingId
-    ? timers.get(activeBindingId)
-    : undefined;
+  const activePomodoro = activeBindingId ? pomodoros.get(activeBindingId) : undefined;
 
   const pomState = activePomodoro?.state ?? "idle";
   const pomColor = getPomodoroColor(pomState);
-  const pomLabel = getPomodoroLabel(pomState);
   const remaining = activePomodoro?.remainingSeconds ?? 0;
-  const elapsed = activeTimer?.elapsed ?? 0;
   const appName = activeBinding?.appName ?? "就绪";
   const pomIndex = activePomodoro?.pomodoroIndex ?? 0;
 
+  const phaseTotal = getPhaseTotal(pomState, { focusMinutes, breakMinutes, longBreakMinutes });
+  const phaseProgress = phaseTotal > 0 ? Math.round(((phaseTotal - remaining) / phaseTotal) * 100) : 0;
+
   return (
     <div
-      data-tauri-drag-region
-      className="select-none relative"
-      style={{
-        opacity: hovered ? 1 : 0.85,
-        transition: "opacity 0.3s ease",
-      }}
+      className="w-full h-full flex items-center justify-center select-none"
+      style={{ opacity: hovered ? 1 : opacity / 100, transition: "opacity 0.2s ease", cursor: "grab" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={handleClick}
-      onContextMenu={handleContextMenu}
+      onMouseDown={handleMouseDown}
     >
-      {size === "compact" ? (
-        <CompactWidget remaining={remaining} color={pomColor} />
-      ) : size === "small" ? (
-        <SmallWidget appName={appName} remaining={remaining} color={pomColor} />
-      ) : size === "large" ? (
-        <LargeWidget
-          appName={appName}
-          remaining={remaining}
-          elapsed={elapsed}
-          color={pomColor}
-          state={pomLabel}
-          index={pomIndex}
-          pomodoros={pomodoros}
-          bindings={bindings}
-        />
-      ) : (
-        <MediumWidget
-          appName={appName}
-          remaining={remaining}
-          elapsed={elapsed}
-          color={pomColor}
-          state={pomLabel}
-          index={pomIndex}
-        />
-      )}
-
-      {/* Size toggle on hover */}
-      {hovered && (
+      <div
+        className="w-full h-full overflow-hidden flex flex-col"
+        style={{
+          background: "var(--bg-secondary)",
+          borderRadius: "16px",
+          backdropFilter: "blur(16px)",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+        }}
+      >
+        {/* Top bar */}
         <div
-          className="absolute bottom-1 right-1 flex gap-0.5"
-          style={{ opacity: 0.6 }}
-        >
-          {(["compact", "small", "medium", "large"] as WidgetSize[]).map(
-            (s) => (
-              <button
-                key={s}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSizeChange(s);
-                }}
-                className="w-4 h-4 rounded text-[8px] flex items-center justify-center"
-                style={{
-                  background: size === s ? pomColor : "var(--bg-tertiary)",
-                  color: size === s ? "#fff" : "var(--text-tertiary)",
-                }}
-              >
-                {s[0].toUpperCase()}
-              </button>
-            )
-          )}
-        </div>
-      )}
-
-      {/* Context menu */}
-      {contextMenu && (
-        <div
-          className="fixed z-[9999] rounded-lg py-1 min-w-[120px]"
+          className="flex items-center justify-between shrink-0"
           style={{
-            left: contextMenu.x,
-            top: contextMenu.y,
+            background: `${pomColor}15`,
+            borderBottom: `1px solid ${pomColor}15`,
+            padding: "6px 14px 6px 16px",
+            borderTopLeftRadius: "16px",
+            borderTopRightRadius: "16px",
+          }}
+        >
+          <span
+            className="text-[11px] font-medium truncate"
+            style={{ color: "var(--text-primary)", maxWidth: "80px" }}
+          >
+            {appName}
+          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <div className="w-2 h-2 rounded-full" style={{ background: pomColor, boxShadow: `0 0 6px ${pomColor}50` }} />
+            <span className="text-[10px] font-medium" style={{ color: pomColor }}>
+              {getPomodoroLabel(pomState)}
+            </span>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div
+          className="flex-1 flex flex-col justify-center"
+          style={{
+            padding: "4px 14px 4px 16px",
+            borderBottomLeftRadius: "16px",
+            borderBottomRightRadius: "16px",
             background: "var(--bg-secondary)",
-            border: "1px solid rgba(72,72,74,0.3)",
-            boxShadow: "var(--shadow-lg)",
           }}
+          onClick={handleClick}
         >
-          <ContextMenuItem label="打开主窗口" onClick={handleClick} />
-          <div
-            className="h-px my-1"
-            style={{ background: "rgba(72,72,74,0.3)" }}
-          />
-          {(["compact", "small", "medium", "large"] as WidgetSize[]).map(
-            (s) => (
-              <ContextMenuItem
-                key={s}
-                label={`尺寸: ${s}`}
-                active={size === s}
-                onClick={() => handleSizeChange(s)}
-              />
-            )
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ContextMenuItem({
-  label,
-  onClick,
-  active,
-}: {
-  label: string;
-  onClick: () => void;
-  active?: boolean;
-}) {
-  return (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      className="w-full text-left px-3 py-1.5 text-xs transition-colors hover:bg-white/5"
-      style={{
-        color: active ? "var(--accent-focus)" : "var(--text-secondary)",
-      }}
-    >
-      {label}
-    </button>
-  );
-}
-
-// ── Compact ──
-function CompactWidget({
-  remaining,
-  color,
-}: {
-  remaining: number;
-  color: string;
-}) {
-  return (
-    <div
-      className="flex items-center gap-2 px-3 py-2 rounded-2xl"
-      style={{
-        background: "var(--bg-secondary)",
-        border: `1px solid ${color}30`,
-        backdropFilter: "blur(12px)",
-      }}
-    >
-      <div
-        className="w-2 h-2 rounded-full"
-        style={{ background: color, boxShadow: `0 0 6px ${color}60` }}
-      />
-      <span className="text-xs font-mono tabular-nums" style={{ color }}>
-        {formatTimer(remaining)}
-      </span>
-    </div>
-  );
-}
-
-// ── Small ──
-function SmallWidget({
-  appName,
-  remaining,
-  color,
-}: {
-  appName: string;
-  remaining: number;
-  color: string;
-}) {
-  return (
-    <div
-      className="flex items-center gap-3 px-4 py-2.5 rounded-2xl"
-      style={{
-        background: "var(--bg-secondary)",
-        border: `1px solid ${color}20`,
-        backdropFilter: "blur(12px)",
-      }}
-    >
-      <div
-        className="w-2 h-2 rounded-full"
-        style={{ background: color, boxShadow: `0 0 6px ${color}60` }}
-      />
-      <span
-        className="text-xs font-medium truncate max-w-[80px]"
-        style={{ color: "var(--text-primary)" }}
-      >
-        {appName}
-      </span>
-      <span className="text-sm font-mono tabular-nums" style={{ color }}>
-        {formatTimer(remaining)}
-      </span>
-    </div>
-  );
-}
-
-// ── Medium ──
-function MediumWidget({
-  appName,
-  remaining,
-  elapsed,
-  color,
-  state,
-  index,
-}: {
-  appName: string;
-  remaining: number;
-  elapsed: number;
-  color: string;
-  state: string;
-  index: number;
-}) {
-  return (
-    <div
-      className="w-[200px] rounded-2xl p-4"
-      style={{
-        background: "var(--bg-secondary)",
-        border: `1px solid ${color}15`,
-        backdropFilter: "blur(12px)",
-        boxShadow: `0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px ${color}10`,
-      }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <span
-          className="text-sm font-medium truncate max-w-[120px]"
-          style={{ color: "var(--text-primary)" }}
-        >
-          {appName}
-        </span>
-        <span
-          className="text-xs px-2 py-0.5 rounded-full"
-          style={{ background: `${color}15`, color }}
-        >
-          {state}
-        </span>
-      </div>
-
-      <div
-        className="w-full h-1.5 rounded-full mb-2 overflow-hidden"
-        style={{ background: "var(--bg-tertiary)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all duration-1000"
-          style={{
-            width: `${getProgress(elapsed, remaining)}%`,
-            background: `linear-gradient(90deg, ${color}, ${color}CC)`,
-          }}
-        />
-      </div>
-
-      <div className="flex items-center justify-between">
-        <span
-          className="text-2xl font-mono font-semibold tabular-nums"
-          style={{ color }}
-        >
-          {formatTimer(remaining)}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {state === "短休息" || state === "长休息" ? (
-            <Coffee size={14} style={{ color: "var(--text-tertiary)" }} />
-          ) : (
-            <Flame size={14} style={{ color: "var(--text-tertiary)" }} />
-          )}
-          <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-            #{index}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Large ──
-function LargeWidget({
-  appName,
-  remaining,
-  elapsed,
-  color,
-  state,
-  index,
-  pomodoros,
-  bindings,
-}: {
-  appName: string;
-  remaining: number;
-  elapsed: number;
-  color: string;
-  state: string;
-  index: number;
-  pomodoros: Map<string, PomodoroStateUpdate>;
-  bindings: Binding[];
-}) {
-  return (
-    <div
-      className="w-[240px] rounded-2xl p-4"
-      style={{
-        background: "var(--bg-secondary)",
-        border: `1px solid ${color}15`,
-        backdropFilter: "blur(12px)",
-        boxShadow: `0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px ${color}10`,
-      }}
-    >
-      <div className="flex items-center justify-between mb-3">
-        <span
-          className="text-sm font-medium truncate max-w-[140px]"
-          style={{ color: "var(--text-primary)" }}
-        >
-          {appName}
-        </span>
-        <span
-          className="text-xs px-2 py-0.5 rounded-full"
-          style={{ background: `${color}15`, color }}
-        >
-          {state}
-        </span>
-      </div>
-
-      <div
-        className="w-full h-1.5 rounded-full mb-2 overflow-hidden"
-        style={{ background: "var(--bg-tertiary)" }}
-      >
-        <div
-          className="h-full rounded-full transition-all duration-1000"
-          style={{
-            width: `${getProgress(elapsed, remaining)}%`,
-            background: `linear-gradient(90deg, ${color}, ${color}CC)`,
-          }}
-        />
-      </div>
-
-      <div className="flex items-center justify-between mb-4">
-        <span
-          className="text-2xl font-mono font-semibold tabular-nums"
-          style={{ color }}
-        >
-          {formatTimer(remaining)}
-        </span>
-        <div className="flex items-center gap-1.5">
-          {state === "短休息" || state === "长休息" ? (
-            <Coffee size={14} style={{ color: "var(--text-tertiary)" }} />
-          ) : (
-            <Flame size={14} style={{ color: "var(--text-tertiary)" }} />
-          )}
-          <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
-            #{index}
-          </span>
-        </div>
-      </div>
-
-      <div
-        className="h-px mb-3"
-        style={{ background: "var(--text-tertiary)" }}
-      />
-
-      <div className="text-xs mb-2" style={{ color: "var(--text-secondary)" }}>
-        今日
-      </div>
-      {Array.from(pomodoros.values())
-        .slice(0, 3)
-        .map((p) => {
-          const binding = bindings.find((b) => b.id === p.bindingId);
-          return (
+          {/* Progress bar */}
+          <div className="w-full h-1.5 rounded-full mb-1.5 overflow-hidden" style={{ background: "var(--bg-tertiary)" }}>
             <div
-              key={p.bindingId}
-              className="flex items-center justify-between py-1"
-            >
-              <span
-                className="text-xs truncate max-w-[120px]"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                {binding?.appName ?? p.bindingId}
-              </span>
-              <span
-                className="text-xs font-mono tabular-nums"
-                style={{ color: "var(--text-tertiary)" }}
-              >
-                {formatTimer(p.remainingSeconds)}
+              className="h-full rounded-full transition-all duration-1000"
+              style={{ width: `${phaseProgress}%`, background: `linear-gradient(90deg, ${pomColor}, ${pomColor}BB)` }}
+            />
+          </div>
+
+          {/* Timer */}
+          <div className="flex items-center justify-between">
+            <span className="text-2xl font-mono font-bold tabular-nums" style={{ color: pomColor }}>
+              {formatTimer(remaining)}
+            </span>
+            <div className="flex items-center gap-1.5">
+              {pomState === "break" || pomState === "longBreak" ? (
+                <Coffee size={14} style={{ color: "var(--text-tertiary)" }} />
+              ) : (
+                <Flame size={14} style={{ color: "var(--text-tertiary)" }} />
+              )}
+              <span className="text-[10px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+                #{pomIndex}
               </span>
             </div>
-          );
-        })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ── Helpers ──
+function getPomodoroColor(state: string): string {
+  switch (state) {
+    case "focus": return "#F97316";
+    case "break": return "#22C55E";
+    case "longBreak": return "#A78BFA";
+    default: return "#78716C";
+  }
+}
 
-function getProgress(elapsed: number, remaining: number): number {
-  const total = elapsed + remaining;
-  if (total <= 0) return 0;
-  return Math.round((elapsed / total) * 100);
+function getPomodoroLabel(state: string): string {
+  switch (state) {
+    case "focus": return "专注";
+    case "break": return "休息";
+    case "longBreak": return "长休";
+    default: return "就绪";
+  }
+}
+
+function getPhaseTotal(state: string, settings: { focusMinutes: number; breakMinutes: number; longBreakMinutes: number }): number {
+  switch (state) {
+    case "focus": return settings.focusMinutes * 60;
+    case "break": return settings.breakMinutes * 60;
+    case "longBreak": return settings.longBreakMinutes * 60;
+    default: return 0;
+  }
 }
