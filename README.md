@@ -1,32 +1,83 @@
-# React + TypeScript + Vite
+# FocusFlow
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> 绑定 app 自动计时的番茄钟 + 时间追踪桌面应用。
 
-Currently, two official plugins are available:
+## 功能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **自动计时** — 绑定常用 app，打开即计时，切走即停
+- **番茄钟** — 按 app 配置专注/休息节奏，到时间有提示音
+- **浮窗面板** — 桌面常驻浮窗，实时显示当前状态，4 种尺寸
+- **数据看板** — 今日总览、App 排行、时间线、趋势图表
+- **菜单栏常驻** — macOS 菜单栏 / Windows 托盘显示状态
+- **深色主题** — 暗色沉浸风格，长时间使用不疲劳
 
-## React Compiler
+## 技术栈
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| 层级 | 技术 |
+|---|---|
+| 桌面框架 | Tauri 2.x (Rust) |
+| 前端 | React 18 + TypeScript |
+| 样式 | Tailwind CSS |
+| 状态管理 | Zustand |
+| 数据库 | SQLite (rusqlite) |
+| 图表 | Recharts |
 
-## Expanding the Oxlint configuration
+## 开发
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+### 环境要求
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+- Node.js 18+
+- Rust 1.77+
+- macOS 或 Windows
+
+### 安装
+
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### 开发模式
+
+```bash
+npx tauri dev
+```
+
+### 构建
+
+```bash
+npx tauri build
+```
+
+## 项目结构
+
+```
+FocusFlow/
+├── src/                          # React 前端
+│   ├── components/               # UI 组件
+│   │   ├── Sidebar.tsx           # 侧边栏导航
+│   │   ├── TodayPage.tsx         # 今日总览
+│   │   ├── TrendsPage.tsx        # 趋势图表
+│   │   ├── BindingsPage.tsx      # 绑定管理
+│   │   ├── SettingsPage.tsx      # 设置
+│   │   ├── FloatingWidget.tsx    # 浮窗面板
+│   │   ├── AddBindingModal.tsx   # 添加绑定弹窗
+│   │   └── Onboarding.tsx        # 引导流程
+│   ├── stores/timerStore.ts      # Zustand 状态管理
+│   ├── lib/                      # 工具函数和 Tauri 封装
+│   └── index.css                 # Tailwind + 设计系统
+├── src-tauri/                    # Rust 后端
+│   └── src/
+│       ├── lib.rs                # Tauri 入口
+│       ├── commands/             # Tauri 命令
+│       ├── db/                   # SQLite 数据库
+│       ├── models/               # 数据模型
+│       ├── monitor/              # 系统级 app 检测
+│       ├── timer/                # 时间追踪引擎
+│       └── pomodoro/             # 番茄钟引擎
+├── FocusFlow-PRD.md              # 产品需求文档
+└── FocusFlow-DevPlan.md          # 开发计划
+```
+
+## License
+
+MIT
