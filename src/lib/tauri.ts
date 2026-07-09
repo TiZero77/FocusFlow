@@ -87,12 +87,12 @@ export function onAppChanged(
 
 export interface UsageRecord {
   id: string;
-  binding_id: string;
-  start_time: number;
-  end_time: number | null;
-  duration_seconds: number;
-  session_date: string;
-  created_at: number;
+  bindingId: string;
+  startTime: number;
+  endTime: number | null;
+  durationSeconds: number;
+  sessionDate: string;
+  createdAt: number;
 }
 
 export async function getUsageRecords(date: string): Promise<UsageRecord[]> {
