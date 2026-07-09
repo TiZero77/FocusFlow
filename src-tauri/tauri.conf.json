@@ -14,6 +14,7 @@
       {
         "title": "FocusFlow",
         "label": "main",
+        "url": "/",
         "width": 960,
         "height": 640,
         "minWidth": 800,
@@ -22,6 +23,21 @@
         "fullscreen": false,
         "decorations": true,
         "center": true
+      },
+      {
+        "title": "FocusFlow Widget",
+        "label": "widget",
+        "url": "/widget",
+        "width": 220,
+        "height": 120,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": true,
+        "x": 1600,
+        "y": 50
       }
     ],
     "security": {
