@@ -26,6 +26,7 @@ pub struct TimerEngine {
 }
 
 #[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TimerUpdate {
     pub binding_id: String,
     pub app_name: String,
@@ -34,6 +35,7 @@ pub struct TimerUpdate {
 }
 
 #[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppChangedEvent {
     pub app_name: String,
     pub bundle_id: String,

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Timer, Flame, Zap } from "lucide-react";
+import { Timer, Flame, Zap, Coffee } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings } from "../lib/tauri";
 import { formatDuration, formatTimer } from "../lib/utils";
@@ -17,16 +17,26 @@ export default function TodayPage() {
     day: "2-digit",
   });
 
-  // Calculate stats from active timers
-  const timerEntries = Object.values(activeTimers);
-  const totalElapsed = timerEntries.reduce((sum, t) => sum + (t?.elapsedSeconds ?? 0), 0);
+  // Calculate stats
+  const timerEntries = Object.values(activeTimers).filter(Boolean);
+  const totalElapsed = timerEntries.reduce(
+    (sum, t) => sum + (t?.elapsedSeconds ?? 0),
+    0
+  );
   const activeCount = timerEntries.filter((t) => t?.isRunning).length;
+  const totalPomodoros = timerEntries.reduce(
+    (sum, t) => sum + (t?.sessionCount ?? 0),
+    0
+  );
 
   return (
     <div className="p-8 max-w-[960px] mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-2xl font-semibold" style={{ color: "var(--text-primary)" }}>
+        <h1
+          className="text-2xl font-semibold"
+          style={{ color: "var(--text-primary)" }}
+        >
           今日总览
         </h1>
         <span className="text-sm" style={{ color: "var(--text-secondary)" }}>
@@ -45,7 +55,7 @@ export default function TodayPage() {
         <StatCard
           icon={<Flame size={20} />}
           label="完成番茄"
-          value="0 个"
+          value={`${totalPomodoros} 个`}
           color="var(--accent-break)"
         />
         <StatCard
@@ -69,36 +79,85 @@ export default function TodayPage() {
             实时计时
           </h2>
           <div className="flex flex-col gap-2">
-            {timerEntries.map((timer) =>
-              timer ? (
+            {timerEntries.map((timer) => {
+              if (!timer) return null;
+
+              const pomColor = getPomodoroColor(timer.pomodoroState);
+              const pomLabel = getPomodoroLabel(timer.pomodoroState);
+
+              return (
                 <div
                   key={timer.bindingId}
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg"
+                  className="flex items-center gap-4 px-4 py-3 rounded-xl transition-colors"
                   style={{ background: "var(--bg-tertiary)" }}
                 >
+                  {/* Status dot */}
                   <div
-                    className="w-2 h-2 rounded-full animate-pulse"
+                    className="w-3 h-3 rounded-full shrink-0"
                     style={{
-                      background: timer.isRunning
-                        ? "var(--accent-focus)"
-                        : "var(--accent-pause)",
+                      background: timer.isRunning ? pomColor : "var(--accent-pause)",
+                      boxShadow: timer.isRunning
+                        ? `0 0 8px ${pomColor}60`
+                        : "none",
                     }}
                   />
+
+                  {/* App name + pomodoro state */}
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className="text-sm font-medium truncate"
+                      style={{ color: "var(--text-primary)" }}
+                    >
+                      {timer.appName}
+                    </div>
+                    <div
+                      className="text-xs flex items-center gap-1.5"
+                      style={{ color: pomColor }}
+                    >
+                      {timer.pomodoroState === "break" ||
+                      timer.pomodoroState === "longBreak" ? (
+                        <Coffee size={12} />
+                      ) : (
+                        <Flame size={12} />
+                      )}
+                      {pomLabel} · #{timer.pomodoroIndex}
+                    </div>
+                  </div>
+
+                  {/* Pomodoro progress bar */}
+                  {timer.pomodoroState !== "idle" && (
+                    <div className="w-24 h-1.5 rounded-full overflow-hidden"
+                      style={{ background: "var(--bg-primary)" }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-1000"
+                        style={{
+                          width: `${getPomodoroProgress(timer)}%`,
+                          background: pomColor,
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Timer */}
                   <span
-                    className="text-sm flex-1"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    {timer.appName}
-                  </span>
-                  <span
-                    className="text-lg font-mono font-semibold tabular-nums"
-                    style={{ color: "var(--accent-focus)" }}
+                    className="text-lg font-mono font-semibold tabular-nums w-16 text-right"
+                    style={{ color: pomColor }}
                   >
                     {formatTimer(timer.elapsedSeconds)}
                   </span>
+
+                  {/* Pomodoro remaining */}
+                  {timer.pomodoroState !== "idle" && (
+                    <span
+                      className="text-xs font-mono tabular-nums w-12 text-right"
+                      style={{ color: "var(--text-secondary)" }}
+                    >
+                      {formatTimer(timer.pomodoroRemaining)}
+                    </span>
+                  )}
                 </div>
-              ) : null
-            )}
+              );
+            })}
           </div>
         </div>
       )}
@@ -148,6 +207,43 @@ export default function TodayPage() {
       </div>
     </div>
   );
+}
+
+function getPomodoroColor(state: string): string {
+  switch (state) {
+    case "focus":
+      return "var(--accent-focus)";
+    case "break":
+    case "longBreak":
+      return "var(--accent-break)";
+    default:
+      return "var(--accent-pause)";
+  }
+}
+
+function getPomodoroLabel(state: string): string {
+  switch (state) {
+    case "focus":
+      return "专注中";
+    case "break":
+      return "短休息";
+    case "longBreak":
+      return "长休息";
+    default:
+      return "就绪";
+  }
+}
+
+function getPomodoroProgress(timer: {
+  pomodoroState: string;
+  pomodoroRemaining: number;
+  bindingId: string;
+}): number {
+  // We need the total duration to calculate progress.
+  // For now, estimate from remaining — this could be improved with total duration tracking.
+  if (timer.pomodoroRemaining <= 0) return 100;
+  // Show remaining as a countdown (inverted progress)
+  return 0;
 }
 
 function StatCard({

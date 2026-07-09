@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod models;
 mod monitor;
+mod pomodoro;
 mod timer;
 
 use rusqlite::Connection;
@@ -30,17 +31,28 @@ pub fn run() {
             let database = db::Database::new(conn);
             database.init().expect("failed to initialize database");
 
-            // Load bindings and start timer engine
+            // Load bindings
             let db = Arc::new(database);
             let bindings = crate::db::get_bindings(&db).unwrap_or_default();
 
+            // Start timer engine
             let engine = timer::TimerEngine::new();
-            engine.set_bindings(bindings);
+            engine.set_bindings(bindings.clone());
             engine.start(app.handle().clone(), db.clone());
+
+            // Start pomodoro engine
+            let pomodoro_engine = pomodoro::PomodoroEngine::new();
+            for binding in &bindings {
+                if binding.pomodoro_enabled {
+                    pomodoro_engine.start_session(binding);
+                }
+            }
+            pomodoro_engine.start(app.handle().clone());
 
             // Register state
             app.manage(db);
             app.manage(engine);
+            app.manage(pomodoro_engine);
 
             log::info!("FocusFlow initialized. Database: {:?}", db_path);
 

@@ -49,10 +49,10 @@ export async function searchInstalledApps(
 // ── Timer commands ──
 
 export interface TimerUpdate {
-  binding_id: string;
-  app_name: string;
-  elapsed_seconds: number;
-  is_running: boolean;
+  bindingId: string;
+  appName: string;
+  elapsedSeconds: number;
+  isRunning: boolean;
 }
 
 export async function getTimerStates(): Promise<TimerUpdate[]> {
@@ -69,15 +69,15 @@ export function onTimerUpdate(callback: (update: TimerUpdate) => void) {
 
 export function onAppChanged(
   callback: (info: {
-    app_name: string;
-    bundle_id: string;
-    matched_binding_id: string | null;
+    appName: string;
+    bundleId: string;
+    matchedBindingId: string | null;
   }) => void
 ) {
   return listen<{
-    app_name: string;
-    bundle_id: string;
-    matched_binding_id: string | null;
+    appName: string;
+    bundleId: string;
+    matchedBindingId: string | null;
   }>("app-changed", (event) => {
     callback(event.payload);
   });

@@ -22,6 +22,7 @@ export interface TimerState {
   pomodoroState: "idle" | "focus" | "break" | "longBreak";
   pomodoroRemaining: number;
   pomodoroIndex: number;
+  sessionCount: number;
 }
 
 interface TimerStore {
@@ -31,6 +32,13 @@ interface TimerStore {
   addBinding: (binding: AppBinding) => void;
   removeBinding: (id: string) => void;
   updateTimer: (bindingId: string, state: Partial<TimerState>) => void;
+  updatePomodoro: (
+    bindingId: string,
+    state: string,
+    remaining: number,
+    index: number,
+    sessionCount: number
+  ) => void;
 }
 
 export const useTimerStore = create<TimerStore>((set) => ({
@@ -51,6 +59,19 @@ export const useTimerStore = create<TimerStore>((set) => ({
       activeTimers: {
         ...s.activeTimers,
         [bindingId]: { ...s.activeTimers[bindingId], ...state } as TimerState,
+      },
+    })),
+  updatePomodoro: (bindingId, state, remaining, index, sessionCount) =>
+    set((s) => ({
+      activeTimers: {
+        ...s.activeTimers,
+        [bindingId]: {
+          ...s.activeTimers[bindingId],
+          pomodoroState: state as TimerState["pomodoroState"],
+          pomodoroRemaining: remaining,
+          pomodoroIndex: index,
+          sessionCount,
+        } as TimerState,
       },
     })),
 }));
