@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Timer, Flame, Zap, BarChart3 } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings, getUsageRecords, type UsageRecord } from "../lib/tauri";
-import { formatDuration, formatTimer } from "../lib/utils";
+import { formatDuration, formatTimer, getPomodoroColor } from "../lib/utils";
 import DailyUsageCard from "./DailyUsageCard";
 import TrendsPreview from "./TrendsPreview";
 
@@ -116,7 +116,7 @@ export default function TodayPage() {
                       style={{ transition: "stroke-dashoffset 1s ease-out, stroke 0.3s ease", filter: `drop-shadow(0 0 16px ${pomColor}40)` }}
                     />
                   </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pt-8">
                     <span className="text-7xl font-mono font-bold tabular-nums" style={{ color: pomColor }}>
                       {formatTimer(remaining)}
                     </span>
@@ -206,15 +206,6 @@ function StatCard({
       </div>
     </div>
   );
-}
-
-function getPomodoroColor(state: string): string {
-  switch (state) {
-    case "focus": return "var(--accent-focus)";
-    case "break": return "var(--accent-break)";
-    case "longBreak": return "var(--accent-long-break)";
-    default: return "var(--accent-pause)";
-  }
 }
 
 function getPomodoroLabel(state: string): string {

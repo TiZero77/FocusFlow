@@ -9,7 +9,7 @@ import {
 import { useTimerStore } from "../stores/timerStore";
 import { getUsageRecords, type UsageRecord } from "../lib/tauri";
 import { useEffect, useState } from "react";
-import { formatDuration } from "../lib/utils";
+import { formatDuration, getPomodoroColor } from "../lib/utils";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "今日" },
@@ -236,15 +236,6 @@ export default function Sidebar() {
       </div>
     </aside>
   );
-}
-
-function getPomodoroColor(state: string): string {
-  switch (state) {
-    case "focus": return "#F97316";
-    case "break": return "#22C55E";
-    case "longBreak": return "#A78BFA";
-    default: return "#78716C";
-  }
 }
 
 function getPomodoroLabel(state: string): string {

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { BarChart3, Clock, Target, Zap, Calendar } from "lucide-react";
 import { getUsageRange, type UsageRecord } from "../lib/tauri";
-import { formatDuration, getRecentDates, getMonthDates, getRecentMonths, getHeatmapColor } from "../lib/utils";
+import { formatDuration, getRecentDates, getMonthDates, getRecentMonths, getHeatmapColor, getHeatmapLegendColors } from "../lib/utils";
 import {
   BarChart,
   Bar,
@@ -298,7 +298,7 @@ function StatsCard({
 
 function HeatmapLegend() {
   const levels = ["无", "低", "中", "高", "极高"];
-  const colors = ["#3a3532", "#5c3d20", "#8a5a28", "#c07a2e", "#F97316"];
+  const colors = getHeatmapLegendColors();
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-[10px] mr-1" style={{ color: "var(--text-tertiary)" }}>少</span>

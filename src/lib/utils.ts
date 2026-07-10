@@ -19,14 +19,32 @@ export function formatDurationCompact(seconds: number): string {
   return formatDuration(seconds);
 }
 
-/** 热力图 5 级颜色（暖橙渐变） */
+/** 热力图 5 级颜色 — 按主题适配 */
+const HEATMAP_PALETTES: Record<string, { empty: string; levels: [string, string, string, string] }> = {
+  warm:   { empty: "#3a3532", levels: ["#5c3d20", "#8a5a28", "#c07a2e", "#F97316"] },
+  crimson:{ empty: "#1a1515", levels: ["#5c1a1a", "#8a2525", "#c03030", "#E53935"] },
+  celadon:{ empty: "#d5d0cb", levels: ["#a7d5d0", "#5fb8ad", "#2d9e92", "#0D9488"] },
+};
+
+function getThemePalette() {
+  const theme = document.documentElement.getAttribute("data-theme") ?? "warm";
+  return HEATMAP_PALETTES[theme] ?? HEATMAP_PALETTES.warm;
+}
+
 export function getHeatmapColor(seconds: number, maxSeconds: number): string {
-  if (seconds <= 0 || maxSeconds <= 0) return "#3a3532";
+  const pal = getThemePalette();
+  if (seconds <= 0 || maxSeconds <= 0) return pal.empty;
   const ratio = seconds / maxSeconds;
-  if (ratio <= 0.25) return "#5c3d20";
-  if (ratio <= 0.50) return "#8a5a28";
-  if (ratio <= 0.75) return "#c07a2e";
-  return "#F97316";
+  if (ratio <= 0.25) return pal.levels[0];
+  if (ratio <= 0.50) return pal.levels[1];
+  if (ratio <= 0.75) return pal.levels[2];
+  return pal.levels[3];
+}
+
+/** 获取当前主题的热力图图例颜色 */
+export function getHeatmapLegendColors(): string[] {
+  const pal = getThemePalette();
+  return [pal.empty, ...pal.levels];
 }
 
 /** 获取最近 N 天的日期字符串数组（含今天），从旧到新排列 */
@@ -80,16 +98,18 @@ export function formatTimer(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+/** 番茄钟颜色 — 主题感知 hex 值（支持字符串拼接 alpha） */
+const POM_COLORS: Record<string, { warm: string; crimson: string; celadon: string }> = {
+  focus:     { warm: "#F97316", crimson: "#C62828", celadon: "#0D9488" },
+  break:     { warm: "#22C55E", crimson: "#EF5350", celadon: "#14B8A6" },
+  longBreak: { warm: "#A78BFA", crimson: "#AD1457", celadon: "#2563EB" },
+  idle:      { warm: "#78716C", crimson: "#616161", celadon: "#9CA3AF" },
+};
+
 export function getPomodoroColor(state: string): string {
-  switch (state) {
-    case "focus":
-      return "#3b82f6";
-    case "break":
-    case "longBreak":
-      return "#22c55e";
-    default:
-      return "#6b7280";
-  }
+  const theme = document.documentElement.getAttribute("data-theme");
+  const key = (theme === "crimson" || theme === "celadon") ? theme : "warm";
+  return POM_COLORS[state]?.[key] ?? POM_COLORS.idle[key];
 }
 
 export function getPomodoroLabel(state: string): string {

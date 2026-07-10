@@ -11,7 +11,8 @@ import {
   type UsageRecord,
 } from "../lib/tauri";
 import type { AppBinding } from "../stores/timerStore";
-import { formatTimer } from "../lib/utils";
+import { formatTimer, getPomodoroColor } from "../lib/utils";
+import { useThemeStore } from "../stores/themeStore";
 
 interface LocalPomodoroState {
   bindingId: string;
@@ -32,6 +33,12 @@ export default function FloatingWidget() {
   // Per-binding unpersisted elapsed seconds (monotonically increasing, never reset)
   const [unpersistedElapsed, setUnpersistedElapsed] = useState<Map<string, number>>(new Map());
 
+  // Initialize theme for this separate window
+  const initTheme = useThemeStore((s) => s.initTheme);
+  useEffect(() => {
+    initTheme();
+  }, [initTheme]);
+
   // Make body/html/root transparent to eliminate black edges at rounded corners
   useEffect(() => {
     document.documentElement.style.background = "transparent";
@@ -51,6 +58,13 @@ export default function FloatingWidget() {
       getSetting("widget_opacity").then((v) => { if (v) setOpacity(Number(v)); });
       getSetting("widget_mode").then((v) => {
         if (v === "usage" || v === "pomodoro") setWidgetMode(v);
+      });
+      getSetting("theme").then((v) => {
+        if (v === "crimson" || v === "celadon") {
+          document.documentElement.setAttribute("data-theme", v);
+        } else {
+          document.documentElement.removeAttribute("data-theme");
+        }
       });
     };
     load();
@@ -234,8 +248,8 @@ export default function FloatingWidget() {
         <div
           className="flex items-center justify-between shrink-0"
           style={{
-            background: widgetMode === "pomodoro" ? `${pomColor}15` : "var(--accent-focus)15",
-            borderBottom: `1px solid ${widgetMode === "pomodoro" ? pomColor : "var(--accent-focus)"}15`,
+            background: `${pomColor}15`,
+            borderBottom: `1px solid ${pomColor}15`,
             padding: "6px 14px 6px 16px",
           }}
         >
@@ -256,8 +270,8 @@ export default function FloatingWidget() {
             )}
             {widgetMode === "usage" && (
               <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full" style={{ background: pomState === "focus" ? "#22C55E" : "var(--text-tertiary)", boxShadow: pomState === "focus" ? "0 0 6px #22C55E50" : "none" }} />
-                <span className="text-[10px] font-medium" style={{ color: pomState === "focus" ? "#22C55E" : "var(--text-tertiary)" }}>
+                <div className="w-2 h-2 rounded-full" style={{ background: pomState === "focus" ? "var(--accent-break)" : "var(--text-tertiary)", boxShadow: pomState === "focus" ? "var(--shadow-glow-break)" : "none" }} />
+                <span className="text-[10px] font-medium" style={{ color: pomState === "focus" ? "var(--accent-break)" : "var(--text-tertiary)" }}>
                   {pomState === "focus" ? "专注中" : "空闲"}
                 </span>
               </div>
@@ -353,15 +367,6 @@ function getPhaseTotal(state: string, binding: AppBinding | undefined): number {
     case "break": return binding.breakMinutes * 60;
     case "longBreak": return binding.longBreakMinutes * 60;
     default: return 0;
-  }
-}
-
-function getPomodoroColor(state: string): string {
-  switch (state) {
-    case "focus": return "#F97316";
-    case "break": return "#22C55E";
-    case "longBreak": return "#A78BFA";
-    default: return "#78716C";
   }
 }
 

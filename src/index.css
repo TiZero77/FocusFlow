@@ -55,6 +55,71 @@
   --transition-slow: 300ms ease;
 }
 
+/* ======================== 赤墨（Crimson Ink）======================== */
+[data-theme="crimson"] {
+  /* 背景 - Material 暗色标准，分层灰 */
+  --bg-primary: #121212;
+  --bg-secondary: #1E1E1E;
+  --bg-tertiary: #2A2A2A;
+  --bg-hover: #363636;
+
+  /* 强调 - 深红/酒红（高级感，非亮红） */
+  --accent-focus: #C62828;
+  --accent-break: #EF5350;
+  --accent-long-break: #AD1457;
+  --accent-pause: #616161;
+  --accent-danger: #B71C1C;
+  --accent-warning: #E65100;
+
+  /* 文字 - 柔白，非纯白 */
+  --text-primary: #E5E5E5;
+  --text-secondary: #d2d2d2;
+  --text-tertiary: #acacac;
+
+  /* 渐变 - 酒红到深红 */
+  --gradient-focus: linear-gradient(135deg, #8E0000, #C62828);
+  --gradient-break: linear-gradient(135deg, #B71C1C, #EF5350);
+  --gradient-long-break: linear-gradient(135deg, #880E4F, #AD1457);
+
+  /* 发光阴影 - 内敛红光 */
+  --shadow-glow-focus: 0 0 20px rgba(201, 51, 51, 0.25);
+  --shadow-glow-break: 0 0 20px rgba(239, 83, 80, 0.25);
+}
+
+/* ======================== 青瓷（Celadon）======================== */
+[data-theme="celadon"] {
+  /* 背景 - 米白 */
+  --bg-primary: #F5F0EB;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #E8E0D8;
+  --bg-hover: #DDD5CC;
+
+  /* 强调 - 青蓝 */
+  --accent-focus: #0D9488;
+  --accent-break: #14B8A6;
+  --accent-long-break: #2563EB;
+  --accent-pause: #9CA3AF;
+  --accent-danger: #DC2626;
+  --accent-warning: #D97706;
+
+  /* 文字 - 深蓝灰 */
+  --text-primary: #1C1917;
+  --text-secondary: #78716C;
+  --text-tertiary: #8C8580;
+
+  /* 渐变 */
+  --gradient-focus: linear-gradient(135deg, #0D9488, #14B8A6);
+  --gradient-break: linear-gradient(135deg, #0F766E, #2DD4BF);
+  --gradient-long-break: linear-gradient(135deg, #1D4ED8, #3B82F6);
+
+  /* 发光阴影 */
+  --shadow-glow-focus: 0 0 20px rgba(13, 148, 136, 0.25);
+  --shadow-glow-break: 0 0 20px rgba(20, 184, 166, 0.25);
+
+  /* 滚动条适配浅色 */
+  scrollbar-color: var(--text-tertiary) transparent;
+}
+
 @layer base {
   * {
     margin: 0;

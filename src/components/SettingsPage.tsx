@@ -11,9 +11,11 @@ import {
   Target,
   BarChart3,
   Activity,
+  Palette,
 } from "lucide-react";
 import { getSetting, setSetting, clearAllData } from "../lib/tauri";
 import { useTimerStore } from "../stores/timerStore";
+import { useThemeStore, type ThemeId } from "../stores/themeStore";
 
 interface SettingRowProps {
   icon: React.ReactNode;
@@ -110,6 +112,7 @@ export default function SettingsPage() {
   const [clearing, setClearing] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const { setBindings } = useTimerStore();
+  const { theme, setTheme } = useThemeStore();
 
   useEffect(() => {
     getSetting("auto_start").then((v) => {
@@ -285,6 +288,46 @@ export default function SettingsPage() {
               options={[2, 3, 4, 5, 6]}
               suffix="个"
             />
+          </SettingRow>
+
+          {/* Appearance */}
+          <h2
+            className="text-xs font-medium uppercase tracking-wider mt-6 mb-2"
+            style={{ color: "var(--text-tertiary)" }}
+          >
+            外观
+          </h2>
+
+          <SettingRow
+            icon={<Palette size={20} />}
+            label="主题皮肤"
+            description="选择你喜欢的色彩风格"
+          >
+            <div className="flex items-center gap-2">
+              {(
+                [
+                  { id: "warm", label: "温暖活力", dot: "#F97316" },
+                  { id: "crimson", label: "赤墨", dot: "#E53935" },
+                  { id: "celadon", label: "青瓷", dot: "#0D9488" },
+                ] as const
+              ).map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => setTheme(t.id as ThemeId)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                  style={{
+                    background: theme === t.id ? "var(--accent-focus)" : "var(--bg-tertiary)",
+                    color: theme === t.id ? "#fff" : "var(--text-secondary)",
+                  }}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ background: t.dot }}
+                  />
+                  {t.label}
+                </button>
+              ))}
+            </div>
           </SettingRow>
 
           {/* General */}
