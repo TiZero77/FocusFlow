@@ -22,6 +22,42 @@ fn emit_to_all<S: serde::Serialize + Clone>(app_handle: &tauri::AppHandle, event
     }
 }
 
+/// Find a matching binding for the given bundle_id (foreground app exe path).
+/// Uses case-insensitive comparison, with exe-filename-only fallback to handle
+/// apps that spawn multiple exes (e.g. LoL client vs game).
+fn find_matching_binding(bindings: &[AppBinding], bundle_id: &str) -> Option<AppBinding> {
+    let bundle_lower = bundle_id.to_lowercase();
+
+    // 1. Case-insensitive exact path match
+    if let Some(b) = bindings
+        .iter()
+        .find(|b| b.bundle_id.to_lowercase() == bundle_lower && b.tracking_enabled)
+    {
+        return Some(b.clone());
+    }
+
+    // 2. Fallback: match by exe filename only (last path component)
+    //    This handles cases like LoL where client is LeagueClient.exe
+    //    but the game is "League of Legends.exe" in a different directory.
+    let exe_name = bundle_lower.rsplit('\\').next().unwrap_or("");
+    if !exe_name.is_empty() {
+        if let Some(b) = bindings.iter().find(|b| {
+            b.tracking_enabled
+                && b
+                    .bundle_id
+                    .to_lowercase()
+                    .rsplit('\\')
+                    .next()
+                    .map(|n| n == exe_name)
+                    .unwrap_or(false)
+        }) {
+            return Some(b.clone());
+        }
+    }
+
+    None
+}
+
 /// Get system idle time in seconds (Windows only)
 fn get_idle_seconds() -> f64 {
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
@@ -155,9 +191,7 @@ impl TimerEngine {
 
                         let binding = {
                             let lock = bindings.lock().unwrap();
-                            lock.iter()
-                                .find(|b| b.bundle_id == bundle_id && b.tracking_enabled)
-                                .cloned()
+                            find_matching_binding(&lock, &bundle_id)
                         };
 
                         if let Some(binding) = binding {
@@ -200,9 +234,7 @@ impl TimerEngine {
                         // Resume or start timer for new app if bound
                         let binding = {
                             let lock = bindings.lock().unwrap();
-                            lock.iter()
-                                .find(|b| b.bundle_id == new_bundle && b.tracking_enabled)
-                                .cloned()
+                            find_matching_binding(&lock, &new_bundle)
                         };
 
                         if let Some(binding) = binding {
@@ -241,9 +273,7 @@ impl TimerEngine {
                         if !has_active_timer {
                             let binding = {
                                 let lock = bindings.lock().unwrap();
-                                lock.iter()
-                                    .find(|b| b.bundle_id == new_bundle && b.tracking_enabled)
-                                    .cloned()
+                                find_matching_binding(&lock, &new_bundle)
                             };
 
                             if let Some(binding) = binding {

@@ -2,15 +2,38 @@ use crate::models::ForegroundApp;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
+use windows::Win32::System::Threading::{
+    OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    QueryFullProcessImageNameW,
+};
 use windows::Win32::System::Registry::{
     RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY, KEY_READ, REG_SZ,
-    REG_VALUE_TYPE, HKEY_LOCAL_MACHINE,
+    REG_VALUE_TYPE, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE,
 };
-use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId, IsWindowVisible,
+    EnumChildWindows, EnumWindows, GetForegroundWindow, GetWindowLongW, GetWindowTextW,
+    GetWindowThreadProcessId, IsWindowVisible, GWL_EXSTYLE, WS_EX_LAYERED,
 };
+
+/// Check if a window is effectively visible to the user.
+/// Extends `IsWindowVisible()` to also include layered windows (WS_EX_LAYERED)
+/// that have a title, which covers CEF-based apps like the LoL client.
+unsafe fn is_window_effectively_visible(hwnd: HWND) -> bool {
+    if IsWindowVisible(hwnd).as_bool() {
+        return true;
+    }
+    // Layered windows with WS_EX_LAYERED are rendered on screen but IsWindowVisible
+    // may return false for them. If the window also has a title, it's a real app window.
+    let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE);
+    if (ex_style as u32 & WS_EX_LAYERED.0) != 0 {
+        let mut title_buf = [0u16; 512];
+        let len = GetWindowTextW(hwnd, &mut title_buf);
+        if len > 0 {
+            return true;
+        }
+    }
+    false
+}
 
 /// Common app aliases for better search
 fn get_app_aliases() -> Vec<(&'static str, Vec<&'static str>)> {
@@ -88,8 +111,8 @@ struct EnumWindowsData<'a> {
 unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let data = &mut *(lparam.0 as *mut EnumWindowsData);
 
-    // Only visible windows
-    if !IsWindowVisible(hwnd).as_bool() {
+    // Only visible windows (includes WS_EX_LAYERED windows with titles)
+    if !is_window_effectively_visible(hwnd) {
         return BOOL(1); // continue
     }
 
@@ -108,11 +131,18 @@ unsafe extern "system" fn enum_windows_callback(hwnd: HWND, lparam: LPARAM) -> B
         || exe_lower.contains("sihost")
         || exe_lower.contains("searchhost")
         || exe_lower.contains("startmenuexperiencehost")
-        || exe_lower.contains("applicationframehost")
         || exe_lower.contains("systemsettings")
         || exe_lower.contains("textinputhost")
         || exe_lower.contains("runtimebroker")
     {
+        return BOOL(1);
+    }
+
+    // For UWP apps hosted under ApplicationFrameHost, try to extract the real app
+    if exe_lower.contains("applicationframehost") {
+        if let Some(uwp_app) = extract_uwp_child_app(hwnd, &mut data.seen) {
+            data.apps.push(uwp_app);
+        }
         return BOOL(1);
     }
 
@@ -344,14 +374,22 @@ fn scan_registry_apps() -> Vec<ForegroundApp> {
         "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
     ];
 
-    for key_path in &uninstall_keys {
-        scan_uninstall_key(key_path, &mut apps, &mut seen);
+    // Scan both HKLM (machine-wide) and HKCU (current user) for installed apps
+    for root_key in [HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER] {
+        for key_path in &uninstall_keys {
+            scan_uninstall_key(root_key, key_path, &mut apps, &mut seen);
+        }
     }
 
     apps
 }
 
-fn scan_uninstall_key(key_path: &str, apps: &mut Vec<ForegroundApp>, seen: &mut HashSet<String>) {
+fn scan_uninstall_key(
+    root_key: HKEY,
+    key_path: &str,
+    apps: &mut Vec<ForegroundApp>,
+    seen: &mut HashSet<String>,
+) {
     use windows::core::PCWSTR;
 
     let key_path_w: Vec<u16> = key_path.encode_utf16().chain(std::iter::once(0)).collect();
@@ -359,7 +397,7 @@ fn scan_uninstall_key(key_path: &str, apps: &mut Vec<ForegroundApp>, seen: &mut 
     unsafe {
         let mut hkey = HKEY::default();
         let result =
-            RegOpenKeyExW(HKEY_LOCAL_MACHINE, PCWSTR(key_path_w.as_ptr()), 0, KEY_READ, &mut hkey);
+            RegOpenKeyExW(root_key, PCWSTR(key_path_w.as_ptr()), 0, KEY_READ, &mut hkey);
 
         if result.is_err() {
             return;
@@ -518,6 +556,87 @@ fn find_exe_in_location(
     None
 }
 
+/// For UWP apps hosted under ApplicationFrameHost, enumerate child windows
+/// to find the actual app process.
+unsafe fn extract_uwp_child_app(parent_hwnd: HWND, seen: &mut HashSet<String>) -> Option<ForegroundApp> {
+    struct UwpEnumData {
+        found: Option<ForegroundApp>,
+        seen: *mut HashSet<String>,
+    }
+
+    unsafe extern "system" fn uwp_child_callback(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let data = &mut *(lparam.0 as *mut UwpEnumData);
+
+        let mut child_pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut child_pid));
+
+        if child_pid == 0 {
+            return BOOL(1);
+        }
+
+        // Check if this child belongs to a different process
+        let mut parent_pid: u32 = 0;
+        GetWindowThreadProcessId(hwnd, Some(&mut parent_pid));
+
+        // Try to get the exe path of the child's process
+        if let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, child_pid) {
+            let mut buf = [0u16; 512];
+            let mut len = buf.len() as u32;
+            let ok = QueryFullProcessImageNameW(
+                h,
+                PROCESS_NAME_WIN32,
+                windows::core::PWSTR(buf.as_mut_ptr()),
+                &mut len,
+            )
+            .is_ok()
+                && len > 0;
+            let _ = windows::Win32::Foundation::CloseHandle(h);
+
+            if ok {
+                let path = String::from_utf16_lossy(&buf[..len as usize]);
+                let lower = path.to_lowercase();
+                // Skip if it's still ApplicationFrameHost itself
+                if !lower.contains("applicationframehost") && !(*data.seen).contains(&path) {
+                    let title_buf = &mut [0u16; 512];
+                    let tlen = GetWindowTextW(hwnd, title_buf);
+                    let title = String::from_utf16_lossy(&title_buf[..tlen as usize]);
+
+                    let name = if !title.is_empty() {
+                        title
+                    } else {
+                        path.rsplit('\\')
+                            .next()
+                            .unwrap_or("")
+                            .replace(".exe", "")
+                    };
+
+                    (*data.seen).insert(path.clone());
+                    data.found = Some(ForegroundApp {
+                        name,
+                        bundle_id: path.clone(),
+                        icon_path: path,
+                    });
+                    return BOOL(0); // stop enumeration
+                }
+            }
+        }
+
+        BOOL(1) // continue
+    }
+
+    let mut enum_data = UwpEnumData {
+        found: None,
+        seen: seen as *mut _,
+    };
+    let _ = EnumChildWindows(
+        parent_hwnd,
+        Some(uwp_child_callback),
+        LPARAM(&mut enum_data as *mut _ as isize),
+    );
+
+    enum_data.found
+}
+
 unsafe fn extract_window_info(hwnd: HWND) -> ForegroundApp {
     let mut title_buf = [0u16; 512];
     let len = GetWindowTextW(hwnd, &mut title_buf);
@@ -528,14 +647,22 @@ unsafe fn extract_window_info(hwnd: HWND) -> ForegroundApp {
 
     let mut exe_path = String::new();
     if let Ok(handle) = OpenProcess(
-        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+        PROCESS_QUERY_LIMITED_INFORMATION,
         false,
         process_id,
     ) {
         let mut path_buf = [0u16; 512];
-        let len = GetModuleFileNameExW(handle, None, &mut path_buf);
-        if len > 0 {
-            exe_path = String::from_utf16_lossy(&path_buf[..len as usize]);
+        let mut path_len = path_buf.len() as u32;
+        if QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(path_buf.as_mut_ptr()),
+            &mut path_len,
+        )
+        .is_ok()
+            && path_len > 0
+        {
+            exe_path = String::from_utf16_lossy(&path_buf[..path_len as usize]);
         }
         let _ = windows::Win32::Foundation::CloseHandle(handle);
     }
