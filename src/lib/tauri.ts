@@ -138,6 +138,26 @@ export async function getUsageRange(startDate: string, endDate: string): Promise
   return invoke("get_usage_range", { startDate, endDate });
 }
 
+// ── Pomodoro Sessions ──
+
+export interface PomodoroSession {
+  id: string;
+  bindingId: string;
+  sessionType: string;
+  plannedDurationSeconds: number;
+  actualDurationSeconds: number;
+  completed: boolean;
+  interruptedBy: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  pomodoroIndex: number;
+  createdAt: number;
+}
+
+export async function getPomodoroRange(startTs: number, endTs: number): Promise<PomodoroSession[]> {
+  return invoke("get_pomodoro_range", { startTs, endTs });
+}
+
 // ── Settings ──
 
 export async function getSetting(key: string): Promise<string | null> {

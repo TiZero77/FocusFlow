@@ -2,6 +2,7 @@ import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   TrendingUp,
+  Lightbulb,
   Link2,
   Settings,
   Flame,
@@ -14,6 +15,7 @@ import { formatDuration, getPomodoroColor } from "../lib/utils";
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "今日" },
   { to: "/trends", icon: TrendingUp, label: "趋势" },
+  { to: "/insights", icon: Lightbulb, label: "洞察" },
   { to: "/bindings", icon: Link2, label: "绑定" },
 ];
 

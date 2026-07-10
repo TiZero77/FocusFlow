@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::db::Database;
-use crate::models::{AppBinding, ForegroundApp, UsageRecord};
+use crate::models::{AppBinding, ForegroundApp, PomodoroSession, UsageRecord};
 use crate::monitor;
 use crate::pomodoro::{PomodoroEngine, PomodoroUpdate};
 use crate::timer::{TimerEngine, TimerUpdate};
@@ -170,6 +170,15 @@ pub fn get_usage_range(
 #[tauri::command]
 pub fn get_pomodoro_states(engine: State<'_, PomodoroEngine>) -> Vec<PomodoroUpdate> {
     engine.get_states()
+}
+
+#[tauri::command]
+pub fn get_pomodoro_range(
+    db: State<'_, Arc<Database>>,
+    start_ts: i64,
+    end_ts: i64,
+) -> Result<Vec<PomodoroSession>, String> {
+    crate::db::get_pomodoro_range(&db, start_ts, end_ts).map_err(|e| e.to_string())
 }
 
 // ── Settings ──

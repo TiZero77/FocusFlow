@@ -313,6 +313,31 @@ pub fn create_pomodoro_session(
     })
 }
 
+pub fn get_pomodoro_range(db: &Database, start_ts: i64, end_ts: i64) -> Result<Vec<PomodoroSession>> {
+    let conn = db.conn.lock().unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT id, binding_id, type, planned_duration_seconds, actual_duration_seconds,
+         completed, interrupted_by, started_at, ended_at, pomodoro_index, created_at
+         FROM pomodoro_sessions WHERE created_at >= ?1 AND created_at <= ?2 ORDER BY created_at",
+    )?;
+    let rows = stmt.query_map((start_ts, end_ts), |row| {
+        Ok(PomodoroSession {
+            id: row.get(0)?,
+            binding_id: row.get(1)?,
+            session_type: row.get(2)?,
+            planned_duration_seconds: row.get(3)?,
+            actual_duration_seconds: row.get(4)?,
+            completed: row.get::<_, i32>(5)? != 0,
+            interrupted_by: row.get(6)?,
+            started_at: row.get(7)?,
+            ended_at: row.get(8)?,
+            pomodoro_index: row.get(9)?,
+            created_at: row.get(10)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 // ── Settings ──
 
 pub fn get_setting(db: &Database, key: &str) -> Result<Option<String>> {

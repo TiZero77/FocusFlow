@@ -198,6 +198,7 @@ pub fn run() {
             commands::get_usage_range,
             commands::get_timer_states,
             commands::get_pomodoro_states,
+            commands::get_pomodoro_range,
             commands::refresh_bindings,
             commands::get_setting,
             commands::set_setting,
