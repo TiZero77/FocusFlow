@@ -199,6 +199,7 @@ pub fn run() {
             commands::get_running_apps,
             commands::search_installed_apps,
             commands::get_usage_records,
+            commands::get_usage_range,
             commands::get_timer_states,
             commands::get_pomodoro_states,
             commands::refresh_bindings,

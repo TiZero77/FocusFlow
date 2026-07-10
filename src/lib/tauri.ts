@@ -111,6 +111,10 @@ export async function getUsageRecords(date: string): Promise<UsageRecord[]> {
   return invoke("get_usage_records", { date });
 }
 
+export async function getUsageRange(startDate: string, endDate: string): Promise<UsageRecord[]> {
+  return invoke("get_usage_range", { startDate, endDate });
+}
+
 // ── Settings ──
 
 export async function getSetting(key: string): Promise<string | null> {

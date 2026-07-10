@@ -3,6 +3,8 @@ import { Timer, Flame, Zap } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings, getUsageRecords, getSetting, type UsageRecord } from "../lib/tauri";
 import { formatDuration, formatTimer } from "../lib/utils";
+import DailyUsageCard from "./DailyUsageCard";
+import TrendsPreview from "./TrendsPreview";
 
 export default function TodayPage() {
   const { bindings, activeTimers, setBindings } = useTimerStore();
@@ -81,39 +83,39 @@ export default function TodayPage() {
   const progress = phaseTotal > 0 ? ((phaseTotal - remaining) / phaseTotal) * 100 : 0;
 
   return (
-    <div className="h-full flex items-center justify-center">
-      <div className="w-full max-w-[600px] px-10 py-16 animate-fade-in">
+    <div className="h-full overflow-y-auto">
+      <div className="w-full max-w-[600px] mx-auto px-10 py-12 animate-fade-in">
         {/* Date */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-10">
           <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
             {today}
           </p>
         </div>
 
         {/* Big Timer Circle */}
-        <div className="flex justify-center mb-16">
-          <div className="relative w-[320px] h-[320px]">
+        <div className="flex justify-center mb-12">
+          <div className="relative w-[280px] h-[280px]">
             {/* Background circle */}
-            <svg className="w-full h-full -rotate-90" viewBox="0 0 320 320">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 280 280">
               <circle
-                cx="160"
-                cy="160"
-                r="140"
+                cx="140"
+                cy="140"
+                r="120"
                 fill="none"
                 stroke="var(--bg-tertiary)"
-                strokeWidth="12"
+                strokeWidth="10"
               />
               {/* Progress circle */}
               <circle
-                cx="160"
-                cy="160"
-                r="140"
+                cx="140"
+                cy="140"
+                r="120"
                 fill="none"
                 stroke={pomColor}
-                strokeWidth="12"
+                strokeWidth="10"
                 strokeLinecap="round"
-                strokeDasharray={`${2 * Math.PI * 140}`}
-                strokeDashoffset={`${2 * Math.PI * 140 * (1 - progress / 100)}`}
+                strokeDasharray={`${2 * Math.PI * 120}`}
+                strokeDashoffset={`${2 * Math.PI * 120 * (1 - progress / 100)}`}
                 style={{
                   transition: "stroke-dashoffset 1s ease-out, stroke 0.3s ease",
                   filter: `drop-shadow(0 0 16px ${pomColor}40)`,
@@ -124,13 +126,13 @@ export default function TodayPage() {
             {/* Center content */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span
-                className="text-8xl font-mono font-bold tabular-nums"
+                className="text-7xl font-mono font-bold tabular-nums"
                 style={{ color: pomColor }}
               >
                 {formatTimer(remaining)}
               </span>
               <span
-                className="text-sm mt-4 px-5 py-2 rounded-full font-medium"
+                className="text-sm mt-3 px-5 py-2 rounded-full font-medium"
                 style={{
                   background: `${pomColor}15`,
                   color: pomColor,
@@ -140,7 +142,7 @@ export default function TodayPage() {
               </span>
               {activeBinding && (
                 <span
-                  className="text-xs mt-3"
+                  className="text-xs mt-2"
                   style={{ color: "var(--text-tertiary)" }}
                 >
                   {activeBinding.appName} · #{activeTimer?.pomodoroIndex ?? 0}
@@ -150,27 +152,38 @@ export default function TodayPage() {
           </div>
         </div>
 
+        {/* Daily Usage Card */}
+        <div className="mb-8">
+          <DailyUsageCard />
+        </div>
+
         {/* Stat Cards */}
-        <div className="grid grid-cols-3 gap-5">
+        <div className="grid grid-cols-3 gap-4 mb-8">
           <StatCard
-            icon={<Timer size={20} />}
+            icon={<Timer size={18} />}
             label="总专注"
             value={formatDuration(totalElapsed)}
             color="var(--accent-focus)"
           />
           <StatCard
-            icon={<Flame size={20} />}
+            icon={<Flame size={18} />}
             label="番茄"
             value={`${totalPomodoros}`}
             color="var(--accent-break)"
           />
           <StatCard
-            icon={<Zap size={20} />}
+            icon={<Zap size={18} />}
             label="活跃"
             value={`${activeCount}`}
             color="var(--accent-warning)"
           />
         </div>
+
+        {/* Trends Preview */}
+        <TrendsPreview />
+
+        {/* 底部留白 */}
+        <div className="h-8" />
       </div>
     </div>
   );
@@ -189,17 +202,17 @@ function StatCard({
 }) {
   return (
     <div
-      className="rounded-2xl p-5 text-center"
+      className="rounded-2xl p-4 text-center"
       style={{ background: "var(--bg-secondary)" }}
     >
       <div
-        className="w-10 h-10 rounded-xl flex items-center justify-center mx-auto mb-3"
+        className="w-9 h-9 rounded-lg flex items-center justify-center mx-auto mb-2"
         style={{ background: `${color}20`, color }}
       >
         {icon}
       </div>
       <div
-        className="text-2xl font-semibold mb-1"
+        className="text-xl font-semibold mb-0.5"
         style={{ color: "var(--text-primary)" }}
       >
         {value}

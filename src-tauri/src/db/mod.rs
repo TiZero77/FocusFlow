@@ -196,6 +196,26 @@ pub fn get_usage_records(db: &Database, date: &str) -> Result<Vec<UsageRecord>> 
     Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
+pub fn get_usage_range(db: &Database, start_date: &str, end_date: &str) -> Result<Vec<UsageRecord>> {
+    let conn = db.conn.lock().unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT id, binding_id, start_time, end_time, duration_seconds, session_date, created_at
+         FROM usage_records WHERE session_date >= ?1 AND session_date <= ?2 ORDER BY session_date, start_time",
+    )?;
+    let rows = stmt.query_map((start_date, end_date), |row| {
+        Ok(UsageRecord {
+            id: row.get(0)?,
+            binding_id: row.get(1)?,
+            start_time: row.get(2)?,
+            end_time: row.get(3)?,
+            duration_seconds: row.get(4)?,
+            session_date: row.get(5)?,
+            created_at: row.get(6)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 // ── Pomodoro Sessions ──
 
 pub fn create_pomodoro_session(

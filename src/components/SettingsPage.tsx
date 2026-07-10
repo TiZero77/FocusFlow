@@ -8,6 +8,7 @@ import {
   Trash2,
   Timer,
   Coffee,
+  Target,
 } from "lucide-react";
 import { getSetting, setSetting, clearAllData } from "../lib/tauri";
 import { useTimerStore } from "../stores/timerStore";
@@ -102,6 +103,7 @@ export default function SettingsPage() {
   const [breakMinutes, setBreakMinutes] = useState(5);
   const [longBreakMinutes, setLongBreakMinutes] = useState(15);
   const [longBreakInterval, setLongBreakInterval] = useState(4);
+  const [dailyGoalMinutes, setDailyGoalMinutes] = useState(480);
   const [clearing, setClearing] = useState(false);
   const [clearConfirm, setClearConfirm] = useState(false);
   const { setBindings } = useTimerStore();
@@ -130,6 +132,9 @@ export default function SettingsPage() {
     });
     getSetting("long_break_interval").then((v) => {
       if (v !== null) setLongBreakInterval(Number(v));
+    });
+    getSetting("daily_goal_minutes").then((v) => {
+      if (v !== null) setDailyGoalMinutes(Number(v));
     });
   }, []);
 
@@ -175,6 +180,11 @@ export default function SettingsPage() {
   const handleLongBreakInterval = (v: number) => {
     setLongBreakInterval(v);
     save("long_break_interval", String(v));
+  };
+
+  const handleDailyGoal = (v: number) => {
+    setDailyGoalMinutes(v);
+    save("daily_goal_minutes", String(v));
   };
 
   const handleClearData = async () => {
@@ -292,6 +302,23 @@ export default function SettingsPage() {
               onChange={handleIdleMinutes}
               options={[1, 3, 5, 10, 15, 30]}
             />
+          </SettingRow>
+
+          <SettingRow
+            icon={<Target size={20} />}
+            label="每日使用目标"
+            description="主页进度条的参考目标时长"
+          >
+            <select
+              value={dailyGoalMinutes}
+              onChange={(e) => handleDailyGoal(Number(e.target.value))}
+            >
+              <option value={0}>不设目标</option>
+              <option value={240}>4 小时</option>
+              <option value={360}>6 小时</option>
+              <option value={480}>8 小时</option>
+              <option value={600}>10 小时</option>
+            </select>
           </SettingRow>
 
           {/* Sound */}

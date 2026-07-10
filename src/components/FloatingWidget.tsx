@@ -1,12 +1,14 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Coffee, Flame } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import {
   getBindings,
   getTimerStates,
   getPomodoroStates,
   getSetting,
   type PomodoroStateUpdate,
+  type TimerUpdate,
 } from "../lib/tauri";
 import { formatTimer } from "../lib/utils";
 
@@ -16,9 +18,16 @@ interface Binding {
   bundleId: string;
 }
 
+interface LocalTimerState {
+  bindingId: string;
+  elapsedSeconds: number;
+  isRunning: boolean;
+}
+
 export default function FloatingWidget() {
   const [bindings, setBindings] = useState<Binding[]>([]);
   const [pomodoros, setPomodoros] = useState<Map<string, PomodoroStateUpdate>>(new Map());
+  const [timers, setTimers] = useState<Map<string, LocalTimerState>>(new Map());
   const [hovered, setHovered] = useState(false);
   const [opacity, setOpacity] = useState(90);
   const [focusMinutes, setFocusMinutes] = useState(25);
@@ -37,7 +46,7 @@ export default function FloatingWidget() {
     }
   }, []);
 
-  // Load settings and poll for updates
+  // Load settings and bindings
   useEffect(() => {
     const loadSettings = () => {
       getBindings()
@@ -49,25 +58,87 @@ export default function FloatingWidget() {
       getSetting("long_break_minutes").then((v) => { if (v) setLongBreakMinutes(Number(v)); });
     };
     loadSettings();
-    // Poll settings every 3 seconds to catch changes
     const interval = setInterval(loadSettings, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  // Poll timer/pomodoro states
+  // Listen to real-time events (same as main window's useTimerEvents)
+  useEffect(() => {
+    const unlistenTimer = listen<TimerUpdate>("timer-update", (event) => {
+      const { bindingId, elapsedSeconds, isRunning, appName } = event.payload;
+      setTimers((prev) => {
+        const next = new Map(prev);
+        next.set(bindingId, { bindingId, elapsedSeconds, isRunning });
+        return next;
+      });
+    });
+
+    const unlistenPomodoro = listen<PomodoroStateUpdate & { binding_id?: string; remaining_seconds?: number; pomodoro_index?: number; session_count?: number }>(
+      "pomodoro-update",
+      (event) => {
+        const p = event.payload;
+        // Handle both camelCase and snake_case (Rust serializes snake_case by default)
+        const bindingId = p.bindingId ?? p.binding_id ?? "";
+        const remaining = p.remainingSeconds ?? p.remaining_seconds ?? 0;
+        const index = p.pomodoroIndex ?? p.pomodoro_index ?? 0;
+        const count = p.sessionCount ?? p.session_count ?? 0;
+        const state = p.state ?? "idle";
+
+        setPomodoros((prev) => {
+          const next = new Map(prev);
+          next.set(bindingId, {
+            bindingId,
+            state,
+            remainingSeconds: remaining,
+            pomodoroIndex: index,
+            sessionCount: count,
+          });
+          return next;
+        });
+      }
+    );
+
+    return () => {
+      unlistenTimer.then((fn) => fn());
+      unlistenPomodoro.then((fn) => fn());
+    };
+  }, []);
+
+  // Fallback: poll every 3 seconds to catch up if events are missed
   useEffect(() => {
     const poll = async () => {
       try {
-        const [, pomodoroStates] = await Promise.all([getTimerStates(), getPomodoroStates()]);
-        const newPomodoros = new Map<string, PomodoroStateUpdate>();
-        for (const p of pomodoroStates) newPomodoros.set(p.bindingId, p);
-        setPomodoros(newPomodoros);
+        const [timerStates, pomodoroStates] = await Promise.all([
+          getTimerStates(),
+          getPomodoroStates(),
+        ]);
+
+        // Sync timer states
+        setTimers((prev) => {
+          const next = new Map(prev);
+          for (const t of timerStates) {
+            next.set(t.bindingId, {
+              bindingId: t.bindingId,
+              elapsedSeconds: t.elapsedSeconds,
+              isRunning: t.isRunning,
+            });
+          }
+          return next;
+        });
+
+        // Sync pomodoro states
+        setPomodoros((prev) => {
+          const next = new Map(prev);
+          for (const p of pomodoroStates) {
+            next.set(p.bindingId, p);
+          }
+          return next;
+        });
       } catch (err) {
         console.error("Poll failed:", err);
       }
     };
-    poll();
-    const interval = setInterval(poll, 1000);
+    const interval = setInterval(poll, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -96,9 +167,10 @@ export default function FloatingWidget() {
     }
   }, []);
 
-  // Get the first active pomodoro
-  const firstPomodoro = pomodoros.values().next().value;
-  const activeBindingId = firstPomodoro?.bindingId ?? bindings[0]?.id;
+  // Select the active binding using the same logic as main window:
+  // prefer the running timer, fall back to the first one
+  const runningTimer = Array.from(timers.values()).find((t) => t.isRunning);
+  const activeBindingId = runningTimer?.bindingId ?? timers.values().next().value?.bindingId ?? bindings[0]?.id;
   const activeBinding = bindings.find((b) => b.id === activeBindingId);
   const activePomodoro = activeBindingId ? pomodoros.get(activeBindingId) : undefined;
 

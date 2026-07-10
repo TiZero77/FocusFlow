@@ -223,6 +223,45 @@ button:active {
   }
 }
 
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes expandDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}
+
+@keyframes collapseUp {
+  from {
+    opacity: 1;
+    max-height: 500px;
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+  }
+}
+
+@keyframes progressFill {
+  from {
+    width: 0%;
+  }
+}
+
 .animate-fade-in {
   animation: fadeIn 200ms ease-out;
 }
@@ -233,4 +272,22 @@ button:active {
 
 .animate-spin {
   animation: spin 1s linear infinite;
+}
+
+.animate-slide-up {
+  animation: slideUp 400ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.animate-expand {
+  animation: expandDown 300ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  overflow: hidden;
+}
+
+.animate-collapse {
+  animation: collapseUp 200ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  overflow: hidden;
+}
+
+.animate-progress-fill {
+  animation: progressFill 800ms cubic-bezier(0.4, 0, 0.2, 1) both;
 }

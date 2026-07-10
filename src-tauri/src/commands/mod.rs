@@ -115,6 +115,15 @@ pub fn get_usage_records(
     crate::db::get_usage_records(&db, &date).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub fn get_usage_range(
+    db: State<'_, Arc<Database>>,
+    start_date: String,
+    end_date: String,
+) -> Result<Vec<UsageRecord>, String> {
+    crate::db::get_usage_range(&db, &start_date, &end_date).map_err(|e| e.to_string())
+}
+
 // ── Pomodoro States ──
 
 #[tauri::command]
