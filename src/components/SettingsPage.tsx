@@ -9,6 +9,8 @@ import {
   Timer,
   Coffee,
   Target,
+  BarChart3,
+  Activity,
 } from "lucide-react";
 import { getSetting, setSetting, clearAllData } from "../lib/tauri";
 import { useTimerStore } from "../stores/timerStore";
@@ -99,6 +101,7 @@ export default function SettingsPage() {
   const [idleMinutes, setIdleMinutes] = useState(5);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [widgetOpacity, setWidgetOpacity] = useState(85);
+  const [widgetMode, setWidgetMode] = useState<"pomodoro" | "usage">("pomodoro");
   const [focusMinutes, setFocusMinutes] = useState(25);
   const [breakMinutes, setBreakMinutes] = useState(5);
   const [longBreakMinutes, setLongBreakMinutes] = useState(15);
@@ -120,6 +123,9 @@ export default function SettingsPage() {
     });
     getSetting("widget_opacity").then((v) => {
       if (v !== null) setWidgetOpacity(Number(v));
+    });
+    getSetting("widget_mode").then((v) => {
+      if (v === "usage" || v === "pomodoro") setWidgetMode(v);
     });
     getSetting("focus_minutes").then((v) => {
       if (v !== null) setFocusMinutes(Number(v));
@@ -160,6 +166,11 @@ export default function SettingsPage() {
   const handleWidgetOpacity = (v: number) => {
     setWidgetOpacity(v);
     save("widget_opacity", String(v));
+  };
+
+  const handleWidgetMode = (mode: "pomodoro" | "usage") => {
+    setWidgetMode(mode);
+    save("widget_mode", mode);
   };
 
   const handleFocusMinutes = (v: number) => {
@@ -344,6 +355,35 @@ export default function SettingsPage() {
           >
             浮窗
           </h2>
+
+          <SettingRow
+            icon={widgetMode === "pomodoro" ? <Timer size={20} /> : <BarChart3 size={20} />}
+            label="浮窗模式"
+            description={widgetMode === "pomodoro" ? "显示番茄钟计时器" : "显示今日使用时长统计"}
+          >
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleWidgetMode("pomodoro")}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{
+                  background: widgetMode === "pomodoro" ? "var(--accent-focus)" : "var(--bg-tertiary)",
+                  color: widgetMode === "pomodoro" ? "#fff" : "var(--text-secondary)",
+                }}
+              >
+                番茄钟
+              </button>
+              <button
+                onClick={() => handleWidgetMode("usage")}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                style={{
+                  background: widgetMode === "usage" ? "var(--accent-focus)" : "var(--bg-tertiary)",
+                  color: widgetMode === "usage" ? "#fff" : "var(--text-secondary)",
+                }}
+              >
+                使用时长
+              </button>
+            </div>
+          </SettingRow>
 
           <SettingRow
             icon={<Monitor size={20} />}

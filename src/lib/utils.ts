@@ -6,22 +6,27 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatDuration(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) {
-    return `${h}h ${m.toString().padStart(2, "0")}m`;
-  }
+  const totalMinutes = Math.floor(seconds / 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0 && m > 0) return `${h}h${m}m`;
+  if (h > 0) return `${h}h`;
   return `${m}m`;
 }
 
 /** 精简格式，如 "4h32m"（不带空格） */
 export function formatDurationCompact(seconds: number): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) {
-    return `${h}h${m.toString().padStart(2, "0")}m`;
-  }
-  return `${m}m`;
+  return formatDuration(seconds);
+}
+
+/** 热力图 5 级颜色（暖橙渐变） */
+export function getHeatmapColor(seconds: number, maxSeconds: number): string {
+  if (seconds <= 0 || maxSeconds <= 0) return "#3a3532";
+  const ratio = seconds / maxSeconds;
+  if (ratio <= 0.25) return "#5c3d20";
+  if (ratio <= 0.50) return "#8a5a28";
+  if (ratio <= 0.75) return "#c07a2e";
+  return "#F97316";
 }
 
 /** 获取最近 N 天的日期字符串数组（含今天），从旧到新排列 */

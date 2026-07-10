@@ -165,7 +165,7 @@ export default function Sidebar() {
                         className="text-sm font-mono font-semibold tabular-nums"
                         style={{ color: isRunning ? color : "var(--text-tertiary)" }}
                       >
-                        {formatSeconds(timer.elapsedSeconds)}
+                        {formatDuration(timer.elapsedSeconds)}
                       </span>
                     </div>
                   </div>
@@ -236,12 +236,6 @@ export default function Sidebar() {
       </div>
     </aside>
   );
-}
-
-function formatSeconds(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 function getPomodoroColor(state: string): string {

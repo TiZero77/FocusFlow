@@ -48,6 +48,8 @@ struct ActiveTimer {
     start_time: i64,
     elapsed_seconds: i64,
     is_running: bool,
+    last_saved_at: i64,
+    last_saved_elapsed: i64,
 }
 
 /// TimerEngine — monitors foreground app and manages timers
@@ -160,7 +162,7 @@ impl TimerEngine {
 
                         if let Some(binding) = binding {
                             resume_timer(&binding, &active_timers);
-                            pomodoro.resume_session(&binding.bundle_id);
+                            pomodoro.start_session(&binding);
                         }
                     }
 
@@ -205,7 +207,7 @@ impl TimerEngine {
 
                         if let Some(binding) = binding {
                             resume_or_start_timer(&binding, &active_timers);
-                            pomodoro.resume_session(&binding.bundle_id);
+                            pomodoro.start_session(&binding);
                             emit_to_all(
                                 &app_handle,
                                 "app-changed",
@@ -247,7 +249,7 @@ impl TimerEngine {
                             if let Some(binding) = binding {
                                 log::info!("[Timer] starting timer for already-focused app: {}", binding.app_name);
                                 resume_or_start_timer(&binding, &active_timers);
-                                pomodoro.resume_session(&binding.bundle_id);
+                                pomodoro.start_session(&binding);
                             }
                         }
                     }
@@ -256,6 +258,9 @@ impl TimerEngine {
                     let timer_count = active_timers.lock().unwrap().len();
                     log::info!("[Timer] active_timers count: {}, calling update_timers", timer_count);
                     update_timers(&active_timers, &app_handle);
+
+                    // Periodically save usage records
+                    periodic_save_timers(&active_timers, &db);
                 } else {
                     log::info!("[Timer] no foreground app detected");
                     if current_bundle.is_some() {
@@ -307,12 +312,15 @@ impl TimerEngine {
             .as_secs() as i64;
 
         for (_bundle_id, timer) in timers {
-            if timer.elapsed_seconds > 0 {
+            // Save only the delta since last periodic save
+            let elapsed_to_save = timer.elapsed_seconds - timer.last_saved_elapsed;
+            if elapsed_to_save > 0 {
                 let _ = db::create_usage_record(
                     db,
                     &timer.binding_id,
-                    timer.start_time,
+                    timer.last_saved_at,
                     now,
+                    elapsed_to_save,
                 );
             }
         }
@@ -345,6 +353,8 @@ fn start_timer(binding: &AppBinding, active_timers: &Arc<Mutex<HashMap<String, A
         start_time: now,
         elapsed_seconds: 0,
         is_running: true,
+        last_saved_at: now,
+        last_saved_elapsed: 0,
     };
 
     let mut lock = active_timers.lock().unwrap();
@@ -402,7 +412,9 @@ fn stop_timer(
     };
 
     if let Some(timer) = timer {
-        if timer.elapsed_seconds > 0 {
+        // Save only the delta since last periodic save
+        let elapsed_to_save = timer.elapsed_seconds - timer.last_saved_elapsed;
+        if elapsed_to_save > 0 {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
@@ -411,8 +423,9 @@ fn stop_timer(
             let _ = db::create_usage_record(
                 db,
                 &timer.binding_id,
-                timer.start_time,
+                timer.last_saved_at,
                 now,
+                elapsed_to_save,
             );
         }
     }
@@ -435,12 +448,15 @@ fn stop_all_timers(
 
     let mut bundle_ids = Vec::new();
     for (bundle_id, timer) in timers {
-        if timer.elapsed_seconds > 0 {
+        // Save only the delta since last periodic save
+        let elapsed_to_save = timer.elapsed_seconds - timer.last_saved_elapsed;
+        if elapsed_to_save > 0 {
             let _ = db::create_usage_record(
                 db,
                 &timer.binding_id,
-                timer.start_time,
+                timer.last_saved_at,
                 now,
+                elapsed_to_save,
             );
         }
         bundle_ids.push(bundle_id);
@@ -479,5 +495,46 @@ fn update_timers(
             update.binding_id, update.app_name, update.elapsed_seconds
         );
         emit_to_all(app_handle, "timer-update", update);
+    }
+}
+
+/// Periodically save usage records for running timers (every 60 seconds)
+fn periodic_save_timers(
+    active_timers: &Arc<Mutex<HashMap<String, ActiveTimer>>>,
+    db: &Arc<Database>,
+) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+
+    let mut lock = active_timers.lock().unwrap();
+    for (_, timer) in lock.iter_mut() {
+        if !timer.is_running {
+            continue;
+        }
+
+        // Save every 60 seconds
+        if now - timer.last_saved_at >= 60 {
+            // Save only the delta since last save, not the full accumulated value.
+            // elapsed_seconds is monotonically increasing and never reset.
+            let elapsed_to_save = timer.elapsed_seconds - timer.last_saved_elapsed;
+            if elapsed_to_save > 0 {
+                let _ = db::create_usage_record(
+                    db,
+                    &timer.binding_id,
+                    timer.last_saved_at,
+                    now,
+                    elapsed_to_save,
+                );
+                log::info!(
+                    "[Timer] periodic save for {}: {}s saved (total elapsed={}s)",
+                    timer.app_name, elapsed_to_save, timer.elapsed_seconds
+                );
+            }
+            // Update checkpoint — do NOT reset elapsed_seconds
+            timer.last_saved_at = now;
+            timer.last_saved_elapsed = timer.elapsed_seconds;
+        }
     }
 }

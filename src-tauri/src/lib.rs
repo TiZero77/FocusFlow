@@ -39,13 +39,8 @@ pub fn run() {
             let db = Arc::new(database);
             let bindings = crate::db::get_bindings(&db).unwrap_or_default();
 
-            // Start pomodoro engine
+            // Start pomodoro engine — sessions are created on-demand when apps are focused
             let pomodoro_engine = pomodoro::PomodoroEngine::new();
-            for binding in &bindings {
-                if binding.pomodoro_enabled {
-                    pomodoro_engine.start_session(binding);
-                }
-            }
             pomodoro_engine.start(app.handle().clone(), db.clone());
 
             // Start timer engine (passes pomodoro engine for linkage)

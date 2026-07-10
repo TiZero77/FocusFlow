@@ -218,23 +218,22 @@ pub fn delete_binding(db: &Database, id: &str) -> Result<()> {
 
 // ── Usage Records ──
 
-pub fn create_usage_record(db: &Database, binding_id: &str, start_time: i64, end_time: i64) -> Result<UsageRecord> {
+pub fn create_usage_record(db: &Database, binding_id: &str, start_time: i64, end_time: i64, elapsed_seconds: i64) -> Result<UsageRecord> {
     let id = uuid::Uuid::new_v4().to_string();
-    let duration = end_time - start_time;
     let session_date = timestamp_to_date(start_time);
     let now = chrono_now();
     let conn = db.conn.lock().unwrap();
     conn.execute(
         "INSERT INTO usage_records (id, binding_id, start_time, end_time, duration_seconds, session_date, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        (&id, binding_id, start_time, end_time, duration, &session_date, now),
+        (&id, binding_id, start_time, end_time, elapsed_seconds, &session_date, now),
     )?;
     Ok(UsageRecord {
         id,
         binding_id: binding_id.to_string(),
         start_time,
         end_time: Some(end_time),
-        duration_seconds: duration,
+        duration_seconds: elapsed_seconds,
         session_date,
         created_at: now,
     })
