@@ -85,6 +85,7 @@ export interface PomodoroStateUpdate {
   bindingId: string;
   state: string;
   remainingSeconds: number;
+  plannedDurationSeconds: number;
   pomodoroIndex: number;
   sessionCount: number;
 }

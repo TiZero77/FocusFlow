@@ -22,6 +22,7 @@ pub struct PomodoroUpdate {
     pub binding_id: String,
     pub state: String,         // "idle" | "focus" | "break" | "longBreak"
     pub remaining_seconds: i64,
+    pub planned_duration_seconds: i64, // total duration for current phase
     pub pomodoro_index: i32,   // current pomodoro number (1-based)
     pub session_count: i32,    // completed pomodoros today
 }
@@ -201,10 +202,17 @@ impl PomodoroEngine {
                             }
                         }
 
+                        let planned = match state.phase {
+                            PomodoroPhase::Focus => state.focus_minutes as i64 * 60,
+                            PomodoroPhase::Break => state.break_minutes as i64 * 60,
+                            PomodoroPhase::LongBreak => state.long_break_minutes as i64 * 60,
+                        };
+
                         updates.push(PomodoroUpdate {
                             binding_id: state.binding_id.clone(),
                             state: state.phase.as_str().to_string(),
                             remaining_seconds: state.remaining_seconds,
+                            planned_duration_seconds: planned,
                             pomodoro_index: state.pomodoro_index,
                             session_count: state.completed_today,
                         });
@@ -226,12 +234,20 @@ impl PomodoroEngine {
     pub fn get_states(&self) -> Vec<PomodoroUpdate> {
         let lock = self.states.lock().unwrap();
         lock.values()
-            .map(|s| PomodoroUpdate {
-                binding_id: s.binding_id.clone(),
-                state: s.phase.as_str().to_string(),
-                remaining_seconds: s.remaining_seconds,
-                pomodoro_index: s.pomodoro_index,
-                session_count: s.completed_today,
+            .map(|s| {
+                let planned = match s.phase {
+                    PomodoroPhase::Focus => s.focus_minutes as i64 * 60,
+                    PomodoroPhase::Break => s.break_minutes as i64 * 60,
+                    PomodoroPhase::LongBreak => s.long_break_minutes as i64 * 60,
+                };
+                PomodoroUpdate {
+                    binding_id: s.binding_id.clone(),
+                    state: s.phase.as_str().to_string(),
+                    remaining_seconds: s.remaining_seconds,
+                    planned_duration_seconds: planned,
+                    pomodoro_index: s.pomodoro_index,
+                    session_count: s.completed_today,
+                }
             })
             .collect()
     }

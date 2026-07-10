@@ -12,6 +12,7 @@ interface PomodoroUpdate {
   bindingId: string;
   state: string;
   remainingSeconds: number;
+  plannedDurationSeconds: number;
   pomodoroIndex: number;
   sessionCount: number;
 }
@@ -53,7 +54,7 @@ export function useTimerEvents() {
     const unlistenPomodoro = listen<PomodoroUpdate>(
       "pomodoro-update",
       (event) => {
-        const { bindingId, state, remainingSeconds, pomodoroIndex, sessionCount } =
+        const { bindingId, state, remainingSeconds, plannedDurationSeconds, pomodoroIndex, sessionCount } =
           event.payload;
 
         const prevState = prevStates.current[bindingId];
@@ -72,7 +73,7 @@ export function useTimerEvents() {
 
         prevStates.current[bindingId] = state;
 
-        updatePomodoro(bindingId, state, remainingSeconds, pomodoroIndex, sessionCount);
+        updatePomodoro(bindingId, state, remainingSeconds, plannedDurationSeconds, pomodoroIndex, sessionCount);
       }
     );
 

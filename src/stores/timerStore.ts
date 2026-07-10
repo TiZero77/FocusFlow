@@ -21,6 +21,7 @@ export interface TimerState {
   isRunning: boolean;
   pomodoroState: "idle" | "focus" | "break" | "longBreak";
   pomodoroRemaining: number;
+  pomodoroPlannedDuration: number;
   pomodoroIndex: number;
   sessionCount: number;
 }
@@ -38,6 +39,7 @@ interface TimerStore {
     bindingId: string,
     state: string,
     remaining: number,
+    plannedDuration: number,
     index: number,
     sessionCount: number
   ) => void;
@@ -80,6 +82,7 @@ export const useTimerStore = create<TimerStore>((set) => ({
         isRunning: false,
         pomodoroState: "idle",
         pomodoroRemaining: 0,
+        pomodoroPlannedDuration: 0,
         pomodoroIndex: 0,
         sessionCount: 0,
       };
@@ -89,15 +92,16 @@ export const useTimerStore = create<TimerStore>((set) => ({
         activeTimers: { ...s.activeTimers, [bindingId]: created },
       };
     }),
-  updatePomodoro: (bindingId, state, remaining, index, sessionCount) =>
+  updatePomodoro: (bindingId, state, remaining, plannedDuration, index, sessionCount) =>
     set((s) => {
-      console.log("[Store] updatePomodoro called:", bindingId, state, remaining);
+      console.log("[Store] updatePomodoro called:", bindingId, state, remaining, plannedDuration);
       const prev = s.activeTimers[bindingId];
       if (prev) {
         const merged = {
           ...prev,
           pomodoroState: state as TimerState["pomodoroState"],
           pomodoroRemaining: remaining,
+          pomodoroPlannedDuration: plannedDuration,
           pomodoroIndex: index,
           sessionCount,
         };
@@ -117,6 +121,7 @@ export const useTimerStore = create<TimerStore>((set) => ({
             isRunning: false,
             pomodoroState: state as TimerState["pomodoroState"],
             pomodoroRemaining: remaining,
+            pomodoroPlannedDuration: plannedDuration,
             pomodoroIndex: index,
             sessionCount,
           },

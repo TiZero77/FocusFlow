@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Timer, Flame, Zap, BarChart3 } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
-import { getBindings, getUsageRecords, getSetting, type UsageRecord } from "../lib/tauri";
+import { getBindings, getUsageRecords, type UsageRecord } from "../lib/tauri";
 import { formatDuration, formatTimer } from "../lib/utils";
 import DailyUsageCard from "./DailyUsageCard";
 import TrendsPreview from "./TrendsPreview";
@@ -10,33 +10,10 @@ export default function TodayPage() {
   const { bindings, activeTimers, setBindings } = useTimerStore();
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
   const [activeTab, setActiveTab] = useState<"timer" | "usage">("timer");
-  const [pomodoroSettings, setPomodoroSettings] = useState({
-    focusMinutes: 25,
-    breakMinutes: 5,
-    longBreakMinutes: 15,
-    longBreakInterval: 4,
-  });
 
   useEffect(() => {
     getBindings().then(setBindings).catch(console.error);
   }, [setBindings]);
-
-  // Load pomodoro settings
-  useEffect(() => {
-    Promise.all([
-      getSetting("focus_minutes"),
-      getSetting("break_minutes"),
-      getSetting("long_break_minutes"),
-      getSetting("long_break_interval"),
-    ]).then(([focus, brk, longBreak, interval]) => {
-      setPomodoroSettings({
-        focusMinutes: focus ? Number(focus) : 25,
-        breakMinutes: brk ? Number(brk) : 5,
-        longBreakMinutes: longBreak ? Number(longBreak) : 15,
-        longBreakInterval: interval ? Number(interval) : 4,
-      });
-    });
-  }, []);
 
   useEffect(() => {
     const now = new Date();
@@ -80,7 +57,7 @@ export default function TodayPage() {
   const pomState = activeTimer?.pomodoroState ?? "idle";
   const pomColor = getPomodoroColor(pomState);
   const remaining = activeTimer?.pomodoroRemaining ?? 0;
-  const phaseTotal = getPhaseTotal(pomState, pomodoroSettings);
+  const phaseTotal = activeTimer?.pomodoroPlannedDuration ?? 0;
   const progress = phaseTotal > 0 ? ((phaseTotal - remaining) / phaseTotal) * 100 : 0;
 
   return (
@@ -249,11 +226,3 @@ function getPomodoroLabel(state: string): string {
   }
 }
 
-function getPhaseTotal(state: string, settings: { focusMinutes: number; breakMinutes: number; longBreakMinutes: number }): number {
-  switch (state) {
-    case "focus": return settings.focusMinutes * 60;
-    case "break": return settings.breakMinutes * 60;
-    case "longBreak": return settings.longBreakMinutes * 60;
-    default: return 0;
-  }
-}

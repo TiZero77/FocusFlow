@@ -7,7 +7,6 @@ import {
   getTimerStates,
   getPomodoroStates,
   getSetting,
-  type PomodoroStateUpdate,
   type TimerUpdate,
 } from "../lib/tauri";
 import { formatTimer } from "../lib/utils";
@@ -24,15 +23,21 @@ interface LocalTimerState {
   isRunning: boolean;
 }
 
+interface LocalPomodoroState {
+  bindingId: string;
+  state: string;
+  remainingSeconds: number;
+  plannedDurationSeconds: number;
+  pomodoroIndex: number;
+  sessionCount: number;
+}
+
 export default function FloatingWidget() {
   const [bindings, setBindings] = useState<Binding[]>([]);
-  const [pomodoros, setPomodoros] = useState<Map<string, PomodoroStateUpdate>>(new Map());
+  const [pomodoros, setPomodoros] = useState<Map<string, LocalPomodoroState>>(new Map());
   const [timers, setTimers] = useState<Map<string, LocalTimerState>>(new Map());
   const [hovered, setHovered] = useState(false);
   const [opacity, setOpacity] = useState(90);
-  const [focusMinutes, setFocusMinutes] = useState(25);
-  const [breakMinutes, setBreakMinutes] = useState(5);
-  const [longBreakMinutes, setLongBreakMinutes] = useState(15);
 
   // Make body/html/root transparent to eliminate black edges at rounded corners
   useEffect(() => {
@@ -53,9 +58,6 @@ export default function FloatingWidget() {
         .then((b) => setBindings(b.map((x) => ({ id: x.id, appName: x.appName, bundleId: x.bundleId }))))
         .catch(console.error);
       getSetting("widget_opacity").then((v) => { if (v) setOpacity(Number(v)); });
-      getSetting("focus_minutes").then((v) => { if (v) setFocusMinutes(Number(v)); });
-      getSetting("break_minutes").then((v) => { if (v) setBreakMinutes(Number(v)); });
-      getSetting("long_break_minutes").then((v) => { if (v) setLongBreakMinutes(Number(v)); });
     };
     loadSettings();
     const interval = setInterval(loadSettings, 3000);
@@ -65,7 +67,7 @@ export default function FloatingWidget() {
   // Listen to real-time events (same as main window's useTimerEvents)
   useEffect(() => {
     const unlistenTimer = listen<TimerUpdate>("timer-update", (event) => {
-      const { bindingId, elapsedSeconds, isRunning, appName } = event.payload;
+      const { bindingId, elapsedSeconds, isRunning } = event.payload;
       setTimers((prev) => {
         const next = new Map(prev);
         next.set(bindingId, { bindingId, elapsedSeconds, isRunning });
@@ -73,23 +75,29 @@ export default function FloatingWidget() {
       });
     });
 
-    const unlistenPomodoro = listen<PomodoroStateUpdate & { binding_id?: string; remaining_seconds?: number; pomodoro_index?: number; session_count?: number }>(
+    // Use plain Record type — serde renames to camelCase but we defend both
+    const unlistenPomodoro = listen<Record<string, unknown>>(
       "pomodoro-update",
       (event) => {
         const p = event.payload;
-        // Handle both camelCase and snake_case (Rust serializes snake_case by default)
-        const bindingId = p.bindingId ?? p.binding_id ?? "";
-        const remaining = p.remainingSeconds ?? p.remaining_seconds ?? 0;
-        const index = p.pomodoroIndex ?? p.pomodoro_index ?? 0;
-        const count = p.sessionCount ?? p.session_count ?? 0;
-        const state = p.state ?? "idle";
+        const bindingId = String(p.bindingId ?? p.binding_id ?? "");
+        const remaining = Number(p.remainingSeconds ?? p.remaining_seconds ?? 0);
+        const planned = Number(p.plannedDurationSeconds ?? p.planned_duration_seconds ?? 0);
+        const index = Number(p.pomodoroIndex ?? p.pomodoro_index ?? 0);
+        const count = Number(p.sessionCount ?? p.session_count ?? 0);
+        const state = String(p.state ?? "idle");
+
+        if (!bindingId) return;
 
         setPomodoros((prev) => {
           const next = new Map(prev);
+          const existing = next.get(bindingId);
           next.set(bindingId, {
             bindingId,
             state,
             remainingSeconds: remaining,
+            // Preserve existing plannedDuration if event doesn't carry it
+            plannedDurationSeconds: planned || existing?.plannedDurationSeconds || 0,
             pomodoroIndex: index,
             sessionCount: count,
           });
@@ -105,6 +113,9 @@ export default function FloatingWidget() {
   }, []);
 
   // Fallback: poll every 3 seconds to catch up if events are missed
+  // NOTE: poll only syncs timer-level fields; plannedDurationSeconds is
+  // exclusively owned by the pomodoro-update event listener to avoid
+  // the poll overwriting it with 0 from a stale/different backend response.
   useEffect(() => {
     const poll = async () => {
       try {
@@ -126,11 +137,20 @@ export default function FloatingWidget() {
           return next;
         });
 
-        // Sync pomodoro states
+        // Sync pomodoro states — preserve plannedDurationSeconds from events
         setPomodoros((prev) => {
           const next = new Map(prev);
           for (const p of pomodoroStates) {
-            next.set(p.bindingId, p);
+            const existing = next.get(p.bindingId);
+            next.set(p.bindingId, {
+              bindingId: p.bindingId,
+              state: p.state,
+              remainingSeconds: p.remainingSeconds,
+              // Always keep the event-set value; poll data may lack this field
+              plannedDurationSeconds: existing?.plannedDurationSeconds ?? 0,
+              pomodoroIndex: p.pomodoroIndex,
+              sessionCount: p.sessionCount,
+            });
           }
           return next;
         });
@@ -180,7 +200,7 @@ export default function FloatingWidget() {
   const appName = activeBinding?.appName ?? "就绪";
   const pomIndex = activePomodoro?.pomodoroIndex ?? 0;
 
-  const phaseTotal = getPhaseTotal(pomState, { focusMinutes, breakMinutes, longBreakMinutes });
+  const phaseTotal = activePomodoro?.plannedDurationSeconds ?? 0;
   const phaseProgress = phaseTotal > 0 ? Math.round(((phaseTotal - remaining) / phaseTotal) * 100) : 0;
 
   return (
@@ -281,14 +301,5 @@ function getPomodoroLabel(state: string): string {
     case "break": return "休息";
     case "longBreak": return "长休";
     default: return "就绪";
-  }
-}
-
-function getPhaseTotal(state: string, settings: { focusMinutes: number; breakMinutes: number; longBreakMinutes: number }): number {
-  switch (state) {
-    case "focus": return settings.focusMinutes * 60;
-    case "break": return settings.breakMinutes * 60;
-    case "longBreak": return settings.longBreakMinutes * 60;
-    default: return 0;
   }
 }
