@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Coffee, Flame } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -9,13 +9,8 @@ import {
   getSetting,
   type TimerUpdate,
 } from "../lib/tauri";
+import type { AppBinding } from "../stores/timerStore";
 import { formatTimer } from "../lib/utils";
-
-interface Binding {
-  id: string;
-  appName: string;
-  bundleId: string;
-}
 
 interface LocalTimerState {
   bindingId: string;
@@ -27,13 +22,12 @@ interface LocalPomodoroState {
   bindingId: string;
   state: string;
   remainingSeconds: number;
-  plannedDurationSeconds: number;
   pomodoroIndex: number;
   sessionCount: number;
 }
 
 export default function FloatingWidget() {
-  const [bindings, setBindings] = useState<Binding[]>([]);
+  const [bindings, setBindings] = useState<AppBinding[]>([]);
   const [pomodoros, setPomodoros] = useState<Map<string, LocalPomodoroState>>(new Map());
   const [timers, setTimers] = useState<Map<string, LocalTimerState>>(new Map());
   const [hovered, setHovered] = useState(false);
@@ -53,18 +47,16 @@ export default function FloatingWidget() {
 
   // Load settings and bindings
   useEffect(() => {
-    const loadSettings = () => {
-      getBindings()
-        .then((b) => setBindings(b.map((x) => ({ id: x.id, appName: x.appName, bundleId: x.bundleId }))))
-        .catch(console.error);
+    const load = () => {
+      getBindings().then(setBindings).catch(console.error);
       getSetting("widget_opacity").then((v) => { if (v) setOpacity(Number(v)); });
     };
-    loadSettings();
-    const interval = setInterval(loadSettings, 3000);
+    load();
+    const interval = setInterval(load, 3000);
     return () => clearInterval(interval);
   }, []);
 
-  // Listen to real-time events (same as main window's useTimerEvents)
+  // Listen to real-time events
   useEffect(() => {
     const unlistenTimer = listen<TimerUpdate>("timer-update", (event) => {
       const { bindingId, elapsedSeconds, isRunning } = event.payload;
@@ -75,31 +67,21 @@ export default function FloatingWidget() {
       });
     });
 
-    // Use plain Record type — serde renames to camelCase but we defend both
     const unlistenPomodoro = listen<Record<string, unknown>>(
       "pomodoro-update",
       (event) => {
         const p = event.payload;
         const bindingId = String(p.bindingId ?? p.binding_id ?? "");
-        const remaining = Number(p.remainingSeconds ?? p.remaining_seconds ?? 0);
-        const planned = Number(p.plannedDurationSeconds ?? p.planned_duration_seconds ?? 0);
-        const index = Number(p.pomodoroIndex ?? p.pomodoro_index ?? 0);
-        const count = Number(p.sessionCount ?? p.session_count ?? 0);
-        const state = String(p.state ?? "idle");
-
         if (!bindingId) return;
 
         setPomodoros((prev) => {
           const next = new Map(prev);
-          const existing = next.get(bindingId);
           next.set(bindingId, {
             bindingId,
-            state,
-            remainingSeconds: remaining,
-            // Preserve existing plannedDuration if event doesn't carry it
-            plannedDurationSeconds: planned || existing?.plannedDurationSeconds || 0,
-            pomodoroIndex: index,
-            sessionCount: count,
+            state: String(p.state ?? "idle"),
+            remainingSeconds: Number(p.remainingSeconds ?? p.remaining_seconds ?? 0),
+            pomodoroIndex: Number(p.pomodoroIndex ?? p.pomodoro_index ?? 0),
+            sessionCount: Number(p.sessionCount ?? p.session_count ?? 0),
           });
           return next;
         });
@@ -112,10 +94,7 @@ export default function FloatingWidget() {
     };
   }, []);
 
-  // Fallback: poll every 3 seconds to catch up if events are missed
-  // NOTE: poll only syncs timer-level fields; plannedDurationSeconds is
-  // exclusively owned by the pomodoro-update event listener to avoid
-  // the poll overwriting it with 0 from a stale/different backend response.
+  // Poll fallback every 3 seconds
   useEffect(() => {
     const poll = async () => {
       try {
@@ -124,7 +103,6 @@ export default function FloatingWidget() {
           getPomodoroStates(),
         ]);
 
-        // Sync timer states
         setTimers((prev) => {
           const next = new Map(prev);
           for (const t of timerStates) {
@@ -137,17 +115,13 @@ export default function FloatingWidget() {
           return next;
         });
 
-        // Sync pomodoro states — preserve plannedDurationSeconds from events
         setPomodoros((prev) => {
           const next = new Map(prev);
           for (const p of pomodoroStates) {
-            const existing = next.get(p.bindingId);
             next.set(p.bindingId, {
               bindingId: p.bindingId,
               state: p.state,
               remainingSeconds: p.remainingSeconds,
-              // Always keep the event-set value; poll data may lack this field
-              plannedDurationSeconds: existing?.plannedDurationSeconds ?? 0,
               pomodoroIndex: p.pomodoroIndex,
               sessionCount: p.sessionCount,
             });
@@ -187,8 +161,7 @@ export default function FloatingWidget() {
     }
   }, []);
 
-  // Select the active binding using the same logic as main window:
-  // prefer the running timer, fall back to the first one
+  // Select the active binding: prefer running timer, fall back to first
   const runningTimer = Array.from(timers.values()).find((t) => t.isRunning);
   const activeBindingId = runningTimer?.bindingId ?? timers.values().next().value?.bindingId ?? bindings[0]?.id;
   const activeBinding = bindings.find((b) => b.id === activeBindingId);
@@ -200,7 +173,9 @@ export default function FloatingWidget() {
   const appName = activeBinding?.appName ?? "就绪";
   const pomIndex = activePomodoro?.pomodoroIndex ?? 0;
 
-  const phaseTotal = activePomodoro?.plannedDurationSeconds ?? 0;
+  // Calculate planned duration from binding settings — single source of truth,
+  // no dependency on event/poll carrying the value.
+  const phaseTotal = getPhaseTotal(pomState, activeBinding);
   const phaseProgress = phaseTotal > 0 ? Math.round(((phaseTotal - remaining) / phaseTotal) * 100) : 0;
 
   return (
@@ -259,7 +234,7 @@ export default function FloatingWidget() {
           {/* Progress bar */}
           <div className="w-full h-1.5 rounded-full mb-1.5 overflow-hidden" style={{ background: "var(--bg-tertiary)" }}>
             <div
-              className="h-full rounded-full transition-all duration-1000"
+              className="h-full rounded-full"
               style={{ width: `${phaseProgress}%`, background: `linear-gradient(90deg, ${pomColor}, ${pomColor}BB)` }}
             />
           </div>
@@ -284,6 +259,20 @@ export default function FloatingWidget() {
       </div>
     </div>
   );
+}
+
+/**
+ * Calculate phase total from the binding's per-binding pomodoro settings.
+ * This is the single source of truth — no event/poll dependency.
+ */
+function getPhaseTotal(state: string, binding: AppBinding | undefined): number {
+  if (!binding) return 0;
+  switch (state) {
+    case "focus": return binding.focusMinutes * 60;
+    case "break": return binding.breakMinutes * 60;
+    case "longBreak": return binding.longBreakMinutes * 60;
+    default: return 0;
+  }
 }
 
 function getPomodoroColor(state: string): string {
