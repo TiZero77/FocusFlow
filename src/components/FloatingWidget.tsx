@@ -32,6 +32,9 @@ export default function FloatingWidget() {
   const [todayUsage, setTodayUsage] = useState<UsageRecord[]>([]);
   // Per-binding unpersisted elapsed seconds (monotonically increasing, never reset)
   const [unpersistedElapsed, setUnpersistedElapsed] = useState<Map<string, number>>(new Map());
+  // Selected binding for pomodoro display (synced from main window)
+  const [selectedBindingId, setSelectedBindingId] = useState<string | null>(null);
+  const [isSelectionLocked, setIsSelectionLocked] = useState(false);
 
   // Initialize theme for this separate window
   const initTheme = useThemeStore((s) => s.initTheme);
@@ -111,6 +114,29 @@ export default function FloatingWidget() {
     };
   }, []);
 
+  // Sync selection from main window
+  useEffect(() => {
+    const unlistenSelection = listen<{ selectedBindingId: string | null; isSelectionLocked: boolean }>(
+      "selection-changed",
+      (event) => {
+        setSelectedBindingId(event.payload.selectedBindingId);
+        setIsSelectionLocked(event.payload.isSelectionLocked);
+      }
+    );
+    // Auto-follow foreground app when not locked
+    const unlistenAppChanged = listen<{
+      matchedBindingId: string | null;
+    }>("app-changed", (event) => {
+      if (!isSelectionLocked && event.payload.matchedBindingId) {
+        setSelectedBindingId(event.payload.matchedBindingId);
+      }
+    });
+    return () => {
+      unlistenSelection.then((fn) => fn());
+      unlistenAppChanged.then((fn) => fn());
+    };
+  }, [isSelectionLocked]);
+
   // Poll fallback every 3 seconds
   useEffect(() => {
     const poll = async () => {
@@ -174,9 +200,12 @@ export default function FloatingWidget() {
     }
   }, []);
 
-  // Select the active binding: prefer active pomodoro (focus state), fall back to first
-  const activePomodoroEntry = Array.from(pomodoros.values()).find((p) => p.state === "focus");
-  const activeBindingId = activePomodoroEntry?.bindingId ?? pomodoros.values().next().value?.bindingId ?? bindings[0]?.id;
+  // Select the active binding: prefer selected, then focus-state pomodoro, then first
+  const activeBindingId =
+    selectedBindingId ??
+    Array.from(pomodoros.values()).find((p) => p.state === "focus")?.bindingId ??
+    pomodoros.values().next().value?.bindingId ??
+    bindings[0]?.id;
   const activeBinding = bindings.find((b) => b.id === activeBindingId);
   const activePomodoro = activeBindingId ? pomodoros.get(activeBindingId) : undefined;
 

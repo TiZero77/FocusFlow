@@ -7,7 +7,7 @@ import DailyUsageCard from "./DailyUsageCard";
 import TrendsPreview from "./TrendsPreview";
 
 export default function TodayPage() {
-  const { bindings, activeTimers, setBindings } = useTimerStore();
+  const { bindings, activeTimers, setBindings, selectedBindingId } = useTimerStore();
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
   const [activeTab, setActiveTab] = useState<"timer" | "usage">("timer");
 
@@ -47,8 +47,11 @@ export default function TodayPage() {
     0
   );
 
-  // Get active timer for big display
-  const activeTimer = timerEntries.find((t) => t?.isRunning) ?? timerEntries[0];
+  // Get active timer for big display — prefer selected binding, then first running, then first entry
+  const activeTimer =
+    (selectedBindingId ? timerEntries.find((t) => t?.bindingId === selectedBindingId) : null) ??
+    timerEntries.find((t) => t?.isRunning) ??
+    timerEntries[0];
   const activeBinding = activeTimer
     ? bindings.find((b) => b.id === activeTimer.bindingId)
     : null;

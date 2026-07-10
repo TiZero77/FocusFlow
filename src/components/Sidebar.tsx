@@ -18,7 +18,7 @@ const navItems = [
 ];
 
 export default function Sidebar() {
-  const { bindings, activeTimers } = useTimerStore();
+  const { bindings, activeTimers, selectedBindingId, isSelectionLocked, selectBinding, lockSelection, unlockSelection } = useTimerStore();
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
   const timerEntries = Object.values(activeTimers).filter(Boolean);
   // Show all timers that have a binding
@@ -139,11 +139,25 @@ export default function Sidebar() {
                 if (!binding) return null;
                 const color = getPomodoroColor(timer.pomodoroState);
                 const isRunning = timer.isRunning;
+                const isSelected = selectedBindingId === timer.bindingId;
+                const handleCardClick = () => {
+                  if (isSelected && isSelectionLocked) {
+                    unlockSelection();
+                  } else {
+                    selectBinding(timer.bindingId);
+                    lockSelection();
+                  }
+                };
                 return (
                   <div
                     key={timer.bindingId}
-                    className="px-4 py-3 rounded-xl"
-                    style={{ background: "var(--bg-secondary)" }}
+                    className="px-4 py-3 rounded-xl cursor-pointer transition-all duration-200"
+                    style={{
+                      background: isSelected ? "var(--bg-hover)" : "var(--bg-secondary)",
+                      outline: isSelected ? `2px solid ${color}80` : "none",
+                      outlineOffset: "-1px",
+                    }}
+                    onClick={handleCardClick}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <div

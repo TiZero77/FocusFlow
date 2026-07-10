@@ -30,6 +30,10 @@ interface TimerStore {
   bindings: AppBinding[];
   activeTimers: Record<string, TimerState>;
   soundEnabled: boolean;
+  /** Currently selected binding for pomodoro display (null = auto-follow foreground) */
+  selectedBindingId: string | null;
+  /** When true, don't auto-switch selectedBindingId on foreground change */
+  isSelectionLocked: boolean;
   setBindings: (bindings: AppBinding[]) => void;
   addBinding: (binding: AppBinding) => void;
   removeBinding: (id: string) => void;
@@ -44,12 +48,20 @@ interface TimerStore {
     sessionCount: number
   ) => void;
   setSoundEnabled: (enabled: boolean) => void;
+  /** Set the selected binding for pomodoro display */
+  selectBinding: (bindingId: string | null) => void;
+  /** Lock selection so it doesn't auto-follow foreground changes */
+  lockSelection: () => void;
+  /** Unlock selection to resume auto-following foreground */
+  unlockSelection: () => void;
 }
 
 export const useTimerStore = create<TimerStore>((set) => ({
   bindings: [],
   activeTimers: {},
   soundEnabled: true,
+  selectedBindingId: null,
+  isSelectionLocked: false,
   setBindings: (bindings) => set({ bindings }),
   addBinding: (binding) =>
     set((s) => ({ bindings: [...s.bindings, binding] })),
@@ -129,4 +141,8 @@ export const useTimerStore = create<TimerStore>((set) => ({
       };
     }),
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
+  selectBinding: (bindingId) =>
+    set({ selectedBindingId: bindingId }),
+  lockSelection: () => set({ isSelectionLocked: true }),
+  unlockSelection: () => set({ isSelectionLocked: false }),
 }));

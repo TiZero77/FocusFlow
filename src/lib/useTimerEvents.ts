@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { listen } from "@tauri-apps/api/event"; // used for pomodoro-update, idle-changed
+import { listen, emit } from "@tauri-apps/api/event"; // used for pomodoro-update, idle-changed
 import { onTimerUpdate, onAppChanged, getSetting } from "./tauri";
 import { useTimerStore } from "../stores/timerStore";
 import {
@@ -45,9 +45,13 @@ export function useTimerEvents() {
       });
     });
 
-    // App changes
+    // App changes — auto-select the matched binding if not manually locked
     const unlistenApp = onAppChanged((info) => {
       console.log("App changed:", info);
+      const state = useTimerStore.getState();
+      if (!state.isSelectionLocked && info.matchedBindingId) {
+        state.selectBinding(info.matchedBindingId);
+      }
     });
 
     // Pomodoro updates
@@ -89,4 +93,11 @@ export function useTimerEvents() {
       unlistenIdle.then((fn) => fn());
     };
   }, [updateTimer, updatePomodoro, setSoundEnabled]);
+
+  // Sync selection state to the widget window
+  const selectedBindingId = useTimerStore((s) => s.selectedBindingId);
+  const isSelectionLocked = useTimerStore((s) => s.isSelectionLocked);
+  useEffect(() => {
+    emit("selection-changed", { selectedBindingId, isSelectionLocked }).catch(() => {});
+  }, [selectedBindingId, isSelectionLocked]);
 }
