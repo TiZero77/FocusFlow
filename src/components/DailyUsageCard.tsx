@@ -11,7 +11,7 @@ interface AppUsage {
   seconds: number;
 }
 
-export default function DailyUsageCard() {
+export default function DailyUsageCard({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const { bindings, activeTimers } = useTimerStore();
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
@@ -102,14 +102,11 @@ export default function DailyUsageCard() {
 
   return (
     <div
-      className="rounded-3xl p-6 animate-slide-up"
-      style={{
-        background: "var(--bg-secondary)",
-        animationDelay: "100ms",
-      }}
+      className={embedded ? "" : "rounded-3xl p-8 animate-slide-up"}
+      style={embedded ? {} : { background: "var(--bg-secondary)", animationDelay: "100ms" }}
     >
       {/* 标题行 */}
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-6">
         <span
           className="text-xs font-medium uppercase tracking-wider"
           style={{ color: "var(--text-tertiary)" }}
@@ -127,7 +124,7 @@ export default function DailyUsageCard() {
       </div>
 
       {/* 大号时长 */}
-      <div className="mb-5">
+      <div className="mb-6">
         <span
           className="text-4xl font-mono font-bold tabular-nums"
           style={{ color: "var(--text-primary)" }}
@@ -147,7 +144,7 @@ export default function DailyUsageCard() {
       {/* 主进度条 */}
       {hasGoal && (
         <div
-          className="h-1 rounded-full mb-5 overflow-hidden"
+          className="h-1 rounded-full mb-6 overflow-hidden"
           style={{ background: "var(--bg-tertiary)" }}
         >
           <div
@@ -163,7 +160,7 @@ export default function DailyUsageCard() {
 
       {/* APP 列表 */}
       {topApps.length > 0 && (
-        <div className="flex flex-col gap-3 mb-4">
+        <div className="flex flex-col gap-4 mb-5">
           {topApps.map((app, i) => {
             const percent = Math.round((app.seconds / maxAppSeconds) * 100);
             return (
@@ -183,7 +180,7 @@ export default function DailyUsageCard() {
                 />
                 {/* APP 名称 */}
                 <span
-                  className="text-xs w-16 truncate shrink-0"
+                  className="text-xs w-20 truncate shrink-0"
                   style={{ color: "var(--text-secondary)" }}
                 >
                   {app.name}
@@ -230,7 +227,7 @@ export default function DailyUsageCard() {
       {/* 查看趋势链接 */}
       <button
         onClick={() => navigate("/trends")}
-        className="flex items-center gap-1 text-xs font-medium group"
+        className="flex items-center gap-1.5 text-xs font-medium group mt-2"
         style={{ color: "var(--text-tertiary)" }}
       >
         查看趋势

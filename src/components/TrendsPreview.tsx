@@ -119,7 +119,7 @@ export default function TrendsPreview() {
 
   return (
     <div
-      className="rounded-3xl overflow-hidden animate-slide-up"
+      className="rounded-3xl overflow-hidden animate-slide-up card-hover"
       style={{
         background: "var(--bg-secondary)",
         animationDelay: "200ms",
@@ -128,7 +128,7 @@ export default function TrendsPreview() {
       {/* 标题栏 — 始终可见 */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-6 py-4"
+        className="w-full flex items-center justify-between px-8 py-5"
         style={{ background: "transparent" }}
       >
         <div className="flex items-center gap-2">
@@ -148,9 +148,9 @@ export default function TrendsPreview() {
 
       {/* 展开内容 */}
       {expanded && (
-        <div className="px-6 pb-6 animate-fade-in">
+        <div className="px-8 pb-8 animate-fade-in">
           {/* Tab 切换 */}
-          <div className="flex gap-1 mb-5 p-1 rounded-xl" style={{ background: "var(--bg-tertiary)" }}>
+          <div className="flex gap-1.5 mb-6 p-1.5 rounded-xl" style={{ background: "var(--bg-tertiary)" }}>
             {(["week", "month", "year"] as Period[]).map((p) => (
               <button
                 key={p}
@@ -168,7 +168,7 @@ export default function TrendsPreview() {
           </div>
 
           {/* 图表 */}
-          {loading ? (
+          {loading && chartData.length === 0 ? (
             <div
               className="flex items-center justify-center h-32 rounded-xl"
               style={{ background: "var(--bg-tertiary)" }}
@@ -180,7 +180,7 @@ export default function TrendsPreview() {
           ) : chartData.some((d) => d.seconds > 0) ? (
             <>
               <div
-                className="rounded-xl p-4 mb-4"
+                className="rounded-xl p-5 mb-5"
                 style={{ background: "var(--bg-tertiary)" }}
               >
                 <ResponsiveContainer width="100%" height={120}>

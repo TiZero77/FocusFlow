@@ -194,6 +194,7 @@ pub fn run() {
             commands::ping,
             commands::get_bindings,
             commands::create_binding,
+            commands::update_binding,
             commands::delete_binding,
             commands::get_current_app,
             commands::get_running_apps,

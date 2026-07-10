@@ -20,6 +20,28 @@ export async function createBinding(params: {
   });
 }
 
+export async function updateBinding(params: {
+  id: string;
+  appName?: string;
+  trackingEnabled?: boolean;
+  pomodoroEnabled?: boolean;
+  focusMinutes?: number;
+  breakMinutes?: number;
+  longBreakMinutes?: number;
+  longBreakInterval?: number;
+}): Promise<AppBinding> {
+  return invoke("update_binding", {
+    id: params.id,
+    appName: params.appName ?? null,
+    trackingEnabled: params.trackingEnabled ?? null,
+    pomodoroEnabled: params.pomodoroEnabled ?? null,
+    focusMinutes: params.focusMinutes ?? null,
+    breakMinutes: params.breakMinutes ?? null,
+    longBreakMinutes: params.longBreakMinutes ?? null,
+    longBreakInterval: params.longBreakInterval ?? null,
+  });
+}
+
 export async function deleteBinding(id: string): Promise<void> {
   return invoke("delete_binding", { id });
 }

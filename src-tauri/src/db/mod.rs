@@ -143,6 +143,70 @@ pub fn create_binding(db: &Database, app_name: &str, bundle_id: &str, icon_path:
     })
 }
 
+pub fn update_binding(
+    db: &Database,
+    id: &str,
+    app_name: Option<&str>,
+    tracking_enabled: Option<bool>,
+    pomodoro_enabled: Option<bool>,
+    focus_minutes: Option<i32>,
+    break_minutes: Option<i32>,
+    long_break_minutes: Option<i32>,
+    long_break_interval: Option<i32>,
+) -> Result<AppBinding> {
+    let conn = db.conn.lock().unwrap();
+
+    // Build dynamic UPDATE
+    let mut sets = Vec::new();
+    let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(v) = app_name {
+        sets.push("app_name = ?");
+        values.push(Box::new(v.to_string()));
+    }
+    if let Some(v) = tracking_enabled {
+        sets.push("tracking_enabled = ?");
+        values.push(Box::new(v as i32));
+    }
+    if let Some(v) = pomodoro_enabled {
+        sets.push("pomodoro_enabled = ?");
+        values.push(Box::new(v as i32));
+    }
+    if let Some(v) = focus_minutes {
+        sets.push("focus_minutes = ?");
+        values.push(Box::new(v));
+    }
+    if let Some(v) = break_minutes {
+        sets.push("break_minutes = ?");
+        values.push(Box::new(v));
+    }
+    if let Some(v) = long_break_minutes {
+        sets.push("long_break_minutes = ?");
+        values.push(Box::new(v));
+    }
+    if let Some(v) = long_break_interval {
+        sets.push("long_break_interval = ?");
+        values.push(Box::new(v));
+    }
+
+    if sets.is_empty() {
+        // Nothing to update, just fetch
+        let bindings = get_bindings(db)?;
+        return bindings.into_iter().find(|b| b.id == id)
+            .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows);
+    }
+
+    values.push(Box::new(id.to_string()));
+    let sql = format!("UPDATE app_bindings SET {} WHERE id = ?", sets.join(", "));
+    let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+    conn.execute(&sql, params.as_slice())?;
+
+    drop(conn);
+    let bindings = get_bindings(db)?;
+    bindings.into_iter().find(|b| b.id == id)
+        .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
+}
+
 pub fn delete_binding(db: &Database, id: &str) -> Result<()> {
     let conn = db.conn.lock().unwrap();
     // Delete related records first (cascade)

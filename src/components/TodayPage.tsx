@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Timer, Flame, Zap } from "lucide-react";
+import { Timer, Flame, Zap, BarChart3 } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings, getUsageRecords, getSetting, type UsageRecord } from "../lib/tauri";
 import { formatDuration, formatTimer } from "../lib/utils";
@@ -9,6 +9,7 @@ import TrendsPreview from "./TrendsPreview";
 export default function TodayPage() {
   const { bindings, activeTimers, setBindings } = useTimerStore();
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
+  const [activeTab, setActiveTab] = useState<"timer" | "usage">("timer");
   const [pomodoroSettings, setPomodoroSettings] = useState({
     focusMinutes: 25,
     breakMinutes: 5,
@@ -53,9 +54,9 @@ export default function TodayPage() {
   }, []);
 
   const today = new Date().toLocaleDateString("zh-CN", {
-    year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    weekday: "short",
   });
 
   // Calculate stats
@@ -84,77 +85,83 @@ export default function TodayPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="w-full max-w-[600px] mx-auto px-10 py-12 animate-fade-in">
-        {/* Date */}
-        <div className="text-center mb-10">
-          <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-            {today}
-          </p>
-        </div>
-
-        {/* Big Timer Circle */}
-        <div className="flex justify-center mb-12">
-          <div className="relative w-[280px] h-[280px]">
-            {/* Background circle */}
-            <svg className="w-full h-full -rotate-90" viewBox="0 0 280 280">
-              <circle
-                cx="140"
-                cy="140"
-                r="120"
-                fill="none"
-                stroke="var(--bg-tertiary)"
-                strokeWidth="10"
-              />
-              {/* Progress circle */}
-              <circle
-                cx="140"
-                cy="140"
-                r="120"
-                fill="none"
-                stroke={pomColor}
-                strokeWidth="10"
-                strokeLinecap="round"
-                strokeDasharray={`${2 * Math.PI * 120}`}
-                strokeDashoffset={`${2 * Math.PI * 120 * (1 - progress / 100)}`}
+      <div className="w-full max-w-[720px] mx-auto px-12 py-12 animate-fade-in">
+        {/* Tab Card */}
+        <div className="rounded-3xl overflow-hidden animate-slide-up mb-8 card-hover" style={{ background: "var(--bg-secondary)" }}>
+          {/* Tab Bar */}
+          <div className="flex items-center justify-between px-7 pt-5 pb-0">
+            <div className="flex gap-1">
+              <button
+                onClick={() => setActiveTab("timer")}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
                 style={{
-                  transition: "stroke-dashoffset 1s ease-out, stroke 0.3s ease",
-                  filter: `drop-shadow(0 0 16px ${pomColor}40)`,
-                }}
-              />
-            </svg>
-
-            {/* Center content */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span
-                className="text-7xl font-mono font-bold tabular-nums"
-                style={{ color: pomColor }}
-              >
-                {formatTimer(remaining)}
-              </span>
-              <span
-                className="text-sm mt-3 px-5 py-2 rounded-full font-medium"
-                style={{
-                  background: `${pomColor}15`,
-                  color: pomColor,
+                  background: activeTab === "timer" ? "var(--bg-tertiary)" : "transparent",
+                  color: activeTab === "timer" ? "var(--text-primary)" : "var(--text-tertiary)",
                 }}
               >
-                {getPomodoroLabel(pomState)}
-              </span>
-              {activeBinding && (
-                <span
-                  className="text-xs mt-2"
-                  style={{ color: "var(--text-tertiary)" }}
-                >
-                  {activeBinding.appName} · #{activeTimer?.pomodoroIndex ?? 0}
-                </span>
-              )}
+                <Timer size={16} />
+                番茄钟
+              </button>
+              <button
+                onClick={() => setActiveTab("usage")}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200"
+                style={{
+                  background: activeTab === "usage" ? "var(--bg-tertiary)" : "transparent",
+                  color: activeTab === "usage" ? "var(--text-primary)" : "var(--text-tertiary)",
+                }}
+              >
+                <BarChart3 size={16} />
+                今日使用
+              </button>
             </div>
+            {/* Date */}
+            <span
+              className="font-mono text-xs tracking-wide"
+              style={{ color: "var(--text-tertiary)" }}
+            >
+              {today}
+            </span>
           </div>
-        </div>
 
-        {/* Daily Usage Card */}
-        <div className="mb-8">
-          <DailyUsageCard />
+          {/* Tab Content */}
+          <div className="p-7 pt-5">
+            {activeTab === "timer" ? (
+              /* Pomodoro Timer */
+              <div className="flex justify-center">
+                <div className="relative w-[300px] h-[300px]">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 300 300">
+                    <circle cx="150" cy="150" r="128" fill="none" stroke="var(--bg-tertiary)" strokeWidth="12" />
+                    <circle
+                      cx="150" cy="150" r="128"
+                      fill="none" stroke={pomColor} strokeWidth="12" strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 128}`}
+                      strokeDashoffset={`${2 * Math.PI * 128 * (1 - progress / 100)}`}
+                      style={{ transition: "stroke-dashoffset 1s ease-out, stroke 0.3s ease", filter: `drop-shadow(0 0 16px ${pomColor}40)` }}
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-7xl font-mono font-bold tabular-nums" style={{ color: pomColor }}>
+                      {formatTimer(remaining)}
+                    </span>
+                    <span
+                      className="text-sm mt-3 px-5 py-2 rounded-full font-medium"
+                      style={{ background: `${pomColor}15`, color: pomColor }}
+                    >
+                      {getPomodoroLabel(pomState)}
+                    </span>
+                    {activeBinding && (
+                      <span className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
+                        {activeBinding.appName} · #{activeTimer?.pomodoroIndex ?? 0}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Daily Usage */
+              <DailyUsageCard embedded />
+            )}
+          </div>
         </div>
 
         {/* Stat Cards */}
@@ -183,7 +190,7 @@ export default function TodayPage() {
         <TrendsPreview />
 
         {/* 底部留白 */}
-        <div className="h-8" />
+        <div className="h-10" />
       </div>
     </div>
   );
@@ -202,7 +209,7 @@ function StatCard({
 }) {
   return (
     <div
-      className="rounded-2xl p-4 text-center"
+      className="rounded-2xl p-4 text-center card-hover"
       style={{ background: "var(--bg-secondary)" }}
     >
       <div

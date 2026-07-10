@@ -39,6 +39,47 @@ pub fn create_binding(
 }
 
 #[tauri::command]
+pub fn update_binding(
+    db: State<'_, Arc<Database>>,
+    engine: State<'_, TimerEngine>,
+    pomodoro: State<'_, PomodoroEngine>,
+    id: String,
+    app_name: Option<String>,
+    tracking_enabled: Option<bool>,
+    pomodoro_enabled: Option<bool>,
+    focus_minutes: Option<i32>,
+    break_minutes: Option<i32>,
+    long_break_minutes: Option<i32>,
+    long_break_interval: Option<i32>,
+) -> Result<AppBinding, String> {
+    let binding = crate::db::update_binding(
+        &db,
+        &id,
+        app_name.as_deref(),
+        tracking_enabled,
+        pomodoro_enabled,
+        focus_minutes,
+        break_minutes,
+        long_break_minutes,
+        long_break_interval,
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Refresh timer engine with updated bindings
+    let bindings = crate::db::get_bindings(&db).unwrap_or_default();
+    engine.set_bindings(bindings.clone());
+
+    // Refresh pomodoro engine with updated binding
+    if let Some(updated) = bindings.iter().find(|b| b.id == id) {
+        if updated.pomodoro_enabled {
+            pomodoro.start_session(updated);
+        }
+    }
+
+    Ok(binding)
+}
+
+#[tauri::command]
 pub fn delete_binding(
     db: State<'_, Arc<Database>>,
     engine: State<'_, TimerEngine>,

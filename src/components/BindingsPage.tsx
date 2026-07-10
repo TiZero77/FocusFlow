@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, Trash2, Loader2, Link2 } from "lucide-react";
+import { Plus, Search, Trash2, Loader2, Link2, Pencil } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings, deleteBinding } from "../lib/tauri";
+import type { AppBinding } from "../stores/timerStore";
 import AddBindingModal from "./AddBindingModal";
+import EditBindingModal from "./EditBindingModal";
 
 export default function BindingsPage() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [editBinding, setEditBinding] = useState<AppBinding | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
   const { bindings, setBindings, removeBinding } = useTimerStore();
@@ -100,12 +103,14 @@ export default function BindingsPage() {
                 pomodoroEnabled={binding.pomodoroEnabled}
                 isDeleting={deleting === binding.id}
                 onDelete={() => handleDelete(binding.id)}
+                onEdit={() => setEditBinding(binding)}
               />
             ))}
           </div>
         )}
 
         <AddBindingModal open={modalOpen} onClose={() => setModalOpen(false)} />
+        <EditBindingModal open={!!editBinding} binding={editBinding} onClose={() => setEditBinding(null)} />
       </div>
     </div>
   );
@@ -118,6 +123,7 @@ function BindingCard({
   pomodoroEnabled,
   isDeleting,
   onDelete,
+  onEdit,
 }: {
   id: string;
   name: string;
@@ -126,6 +132,7 @@ function BindingCard({
   pomodoroEnabled: boolean;
   isDeleting: boolean;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   return (
     <div
@@ -166,6 +173,15 @@ function BindingCard({
           color="var(--accent-break)"
         />
       </div>
+
+      {/* Edit */}
+      <button
+        onClick={onEdit}
+        className="w-10 h-10 rounded-xl flex items-center justify-center transition-colors hover:bg-white/10"
+        title="编辑绑定"
+      >
+        <Pencil size={18} style={{ color: "var(--text-tertiary)" }} />
+      </button>
 
       {/* Delete */}
       <button

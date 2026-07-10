@@ -32,6 +32,7 @@ interface TimerStore {
   setBindings: (bindings: AppBinding[]) => void;
   addBinding: (binding: AppBinding) => void;
   removeBinding: (id: string) => void;
+  updateBindingInStore: (binding: AppBinding) => void;
   updateTimer: (bindingId: string, state: Partial<TimerState>) => void;
   updatePomodoro: (
     bindingId: string,
@@ -56,6 +57,10 @@ export const useTimerStore = create<TimerStore>((set) => ({
       activeTimers: Object.fromEntries(
         Object.entries(s.activeTimers).filter(([k]) => k !== id)
       ),
+    })),
+  updateBindingInStore: (binding) =>
+    set((s) => ({
+      bindings: s.bindings.map((b) => (b.id === binding.id ? binding : b)),
     })),
   updateTimer: (bindingId, state) =>
     set((s) => {
