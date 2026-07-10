@@ -139,7 +139,8 @@ export default function Sidebar() {
                 if (!timer) return null;
                 const binding = bindings.find((b) => b.id === timer.bindingId);
                 if (!binding) return null;
-                const color = getPomodoroColor(timer.pomodoroState);
+                const isPomodoro = binding.pomodoroEnabled !== false;
+                const color = isPomodoro ? getPomodoroColor(timer.pomodoroState) : "var(--accent-focus)";
                 const isRunning = timer.isRunning;
                 const isSelected = selectedBindingId === timer.bindingId;
                 const handleCardClick = () => {
@@ -175,7 +176,7 @@ export default function Sidebar() {
                     </div>
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-[11px]" style={{ color: isRunning ? color : "var(--text-tertiary)" }}>
-                        {isRunning ? getPomodoroLabel(timer.pomodoroState) : "已暂停"}
+                        {isRunning ? (isPomodoro ? getPomodoroLabel(timer.pomodoroState) : "使用中") : "已暂停"}
                       </span>
                       <span
                         className="text-sm font-mono font-semibold tabular-nums"

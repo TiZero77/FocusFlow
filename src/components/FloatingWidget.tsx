@@ -75,16 +75,15 @@ export default function FloatingWidget() {
     return () => clearInterval(interval);
   }, []);
 
-  // Load today's usage records
+  // Load today's usage records (always load for usage mode fallback)
   useEffect(() => {
-    if (widgetMode !== "usage") return;
     const today = new Date().toISOString().split("T")[0];
     getUsageRecords(today).then(setTodayUsage).catch(console.error);
     const interval = setInterval(() => {
       getUsageRecords(today).then(setTodayUsage).catch(console.error);
     }, 5000);
     return () => clearInterval(interval);
-  }, [widgetMode]);
+  }, []);
 
   // Listen to real-time pomodoro events
   useEffect(() => {
@@ -209,6 +208,9 @@ export default function FloatingWidget() {
   const activeBinding = bindings.find((b) => b.id === activeBindingId);
   const activePomodoro = activeBindingId ? pomodoros.get(activeBindingId) : undefined;
 
+  // Effective mode: follow binding's pomodoroEnabled, fallback to global widgetMode
+  const effectiveMode = activeBinding?.pomodoroEnabled === false ? "usage" : widgetMode;
+
   const pomState = activePomodoro?.state ?? "idle";
   const pomColor = getPomodoroColor(pomState);
   const remaining = activePomodoro?.remainingSeconds ?? 0;
@@ -257,6 +259,13 @@ export default function FloatingWidget() {
   const totalUnpersisted = Array.from(unpersistedElapsed.values()).reduce((sum, v) => sum + v, 0);
   const displaySeconds = dbTotal + totalUnpersisted;
 
+  // Per-binding daily usage (DB records + current session elapsed)
+  const bindingDbTotal = activeBindingId
+    ? todayUsage.filter((r) => r.bindingId === activeBindingId).reduce((sum, r) => sum + r.durationSeconds, 0)
+    : 0;
+  const bindingElapsed = activeBindingId ? (unpersistedElapsed.get(activeBindingId) ?? 0) : 0;
+  const bindingDailySeconds = bindingDbTotal + bindingElapsed;
+
   return (
     <div
       className="w-full h-full flex items-center justify-center select-none"
@@ -286,10 +295,10 @@ export default function FloatingWidget() {
             className="text-[11px] font-medium truncate"
             style={{ color: "var(--text-primary)", maxWidth: "80px" }}
           >
-            {widgetMode === "pomodoro" ? appName : "今日使用"}
+            {appName}
           </span>
           <div className="flex items-center gap-2 shrink-0">
-            {widgetMode === "pomodoro" && (
+            {effectiveMode === "pomodoro" && (
               <div className="flex items-center gap-1">
                 <div className="w-2 h-2 rounded-full" style={{ background: pomColor, boxShadow: `0 0 6px ${pomColor}50` }} />
                 <span className="text-[10px] font-medium" style={{ color: pomColor }}>
@@ -297,11 +306,11 @@ export default function FloatingWidget() {
                 </span>
               </div>
             )}
-            {widgetMode === "usage" && (
+            {effectiveMode === "usage" && (
               <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full" style={{ background: pomState === "focus" ? "var(--accent-break)" : "var(--text-tertiary)", boxShadow: pomState === "focus" ? "var(--shadow-glow-break)" : "none" }} />
-                <span className="text-[10px] font-medium" style={{ color: pomState === "focus" ? "var(--accent-break)" : "var(--text-tertiary)" }}>
-                  {pomState === "focus" ? "专注中" : "空闲"}
+                <div className="w-2 h-2 rounded-full" style={{ background: activeBindingId && (unpersistedElapsed.get(activeBindingId) ?? 0) > 0 ? "var(--accent-focus)" : "var(--text-tertiary)", boxShadow: activeBindingId && (unpersistedElapsed.get(activeBindingId) ?? 0) > 0 ? "0 0 6px var(--accent-focus)50" : "none" }} />
+                <span className="text-[10px] font-medium" style={{ color: activeBindingId && (unpersistedElapsed.get(activeBindingId) ?? 0) > 0 ? "var(--accent-focus)" : "var(--text-tertiary)" }}>
+                  {activeBindingId && (unpersistedElapsed.get(activeBindingId) ?? 0) > 0 ? "使用中" : "空闲"}
                 </span>
               </div>
             )}
@@ -328,7 +337,7 @@ export default function FloatingWidget() {
           }}
           onClick={handleClick}
         >
-          {widgetMode === "pomodoro" ? (
+          {effectiveMode === "pomodoro" ? (
             <>
               {/* Progress bar */}
               <div className="w-full h-1.5 rounded-full mb-1.5 overflow-hidden" style={{ background: "var(--bg-tertiary)" }}>
@@ -361,14 +370,14 @@ export default function FloatingWidget() {
               <div className="w-full h-1.5 rounded-full mb-1.5 overflow-hidden" style={{ background: "var(--bg-tertiary)" }}>
                 <div
                   className="h-full rounded-full"
-                  style={{ width: `${Math.min(100, (displaySeconds / 28800) * 100)}%`, background: "linear-gradient(90deg, var(--accent-focus), var(--accent-focus)BB)" }}
+                  style={{ width: `${Math.min(100, (bindingDailySeconds / 28800) * 100)}%`, background: "linear-gradient(90deg, var(--accent-focus), var(--accent-focus)BB)" }}
                 />
               </div>
 
               {/* Usage time */}
               <div className="flex items-center justify-between">
                 <span className="text-2xl font-mono font-bold tabular-nums" style={{ color: "var(--accent-focus)" }}>
-                  {formatUsageTime(displaySeconds)}
+                  {formatUsageTime(bindingDailySeconds)}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <BarChart3 size={14} style={{ color: "var(--text-tertiary)" }} />

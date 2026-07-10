@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Timer, Flame, Zap, BarChart3 } from "lucide-react";
+import { Timer, Flame, Zap, BarChart3, Clock } from "lucide-react";
 import { useTimerStore } from "../stores/timerStore";
 import { getBindings, getUsageRecords, type UsageRecord } from "../lib/tauri";
 import { formatDuration, formatTimer, getPomodoroColor } from "../lib/utils";
@@ -63,6 +63,10 @@ export default function TodayPage() {
   const phaseTotal = activeTimer?.pomodoroPlannedDuration ?? 0;
   const progress = phaseTotal > 0 ? ((phaseTotal - remaining) / phaseTotal) * 100 : 0;
 
+  // Whether the active binding uses pomodoro mode
+  const isPomodoroMode = activeBinding?.pomodoroEnabled !== false;
+  const activeElapsed = activeTimer?.elapsedSeconds ?? 0;
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="w-full max-w-[720px] mx-auto px-12 py-12 animate-fade-in">
@@ -79,8 +83,8 @@ export default function TodayPage() {
                   color: activeTab === "timer" ? "var(--text-primary)" : "var(--text-tertiary)",
                 }}
               >
-                <Timer size={16} />
-                番茄钟
+                {isPomodoroMode ? <Timer size={16} /> : <BarChart3 size={16} />}
+                {isPomodoroMode ? "番茄钟" : "使用时长"}
               </button>
               <button
                 onClick={() => setActiveTab("usage")}
@@ -106,37 +110,71 @@ export default function TodayPage() {
           {/* Tab Content */}
           <div className="p-7 pt-5">
             {activeTab === "timer" ? (
-              /* Pomodoro Timer */
-              <div className="flex justify-center">
-                <div className="relative w-[300px] h-[300px]">
-                  <svg className="w-full h-full -rotate-90" viewBox="0 0 300 300">
-                    <circle cx="150" cy="150" r="128" fill="none" stroke="var(--bg-tertiary)" strokeWidth="12" />
-                    <circle
-                      cx="150" cy="150" r="128"
-                      fill="none" stroke={pomColor} strokeWidth="12" strokeLinecap="round"
-                      strokeDasharray={`${2 * Math.PI * 128}`}
-                      strokeDashoffset={`${2 * Math.PI * 128 * (1 - progress / 100)}`}
-                      style={{ transition: "stroke-dashoffset 1s ease-out, stroke 0.3s ease", filter: `drop-shadow(0 0 16px ${pomColor}40)` }}
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pt-8">
-                    <span className="text-7xl font-mono font-bold tabular-nums" style={{ color: pomColor }}>
-                      {formatTimer(remaining)}
-                    </span>
-                    <span
-                      className="text-sm mt-3 px-5 py-2 rounded-full font-medium"
-                      style={{ background: `${pomColor}15`, color: pomColor }}
-                    >
-                      {getPomodoroLabel(pomState)}
-                    </span>
-                    {activeBinding && (
-                      <span className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
-                        {activeBinding.appName} · #{activeTimer?.pomodoroIndex ?? 0}
+              isPomodoroMode ? (
+                /* Pomodoro Timer */
+                <div className="flex justify-center">
+                  <div className="relative w-[300px] h-[300px]">
+                    <svg className="w-full h-full -rotate-90" viewBox="0 0 300 300">
+                      <circle cx="150" cy="150" r="128" fill="none" stroke="var(--bg-tertiary)" strokeWidth="12" />
+                      <circle
+                        cx="150" cy="150" r="128"
+                        fill="none" stroke={pomColor} strokeWidth="12" strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 128}`}
+                        strokeDashoffset={`${2 * Math.PI * 128 * (1 - progress / 100)}`}
+                        style={{ transition: "stroke-dashoffset 1s ease-out, stroke 0.3s ease", filter: `drop-shadow(0 0 16px ${pomColor}40)` }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pt-8">
+                      <span className="text-7xl font-mono font-bold tabular-nums" style={{ color: pomColor }}>
+                        {formatTimer(remaining)}
                       </span>
-                    )}
+                      <span
+                        className="text-sm mt-3 px-5 py-2 rounded-full font-medium"
+                        style={{ background: `${pomColor}15`, color: pomColor }}
+                      >
+                        {getPomodoroLabel(pomState)}
+                      </span>
+                      {activeBinding && (
+                        <span className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
+                          {activeBinding.appName} · #{activeTimer?.pomodoroIndex ?? 0}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                /* Usage Time Display (pomodoro disabled) */
+                <div className="flex justify-center">
+                  <div className="relative w-[300px] h-[300px]">
+                    <svg className="w-full h-full -rotate-90" viewBox="0 0 300 300">
+                      <circle cx="150" cy="150" r="128" fill="none" stroke="var(--bg-tertiary)" strokeWidth="12" />
+                      <circle
+                        cx="150" cy="150" r="128"
+                        fill="none" stroke="var(--accent-focus)" strokeWidth="12" strokeLinecap="round"
+                        strokeDasharray={`${2 * Math.PI * 128}`}
+                        strokeDashoffset={`${2 * Math.PI * 128 * (1 - Math.min(100, (activeElapsed / 28800) * 100) / 100)}`}
+                        style={{ transition: "stroke-dashoffset 1s ease-out", filter: "drop-shadow(0 0 16px var(--accent-focus)40)" }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pt-8">
+                      <span className="text-6xl font-mono font-bold tabular-nums" style={{ color: "var(--accent-focus)" }}>
+                        {formatDuration(activeElapsed)}
+                      </span>
+                      <span
+                        className="text-sm mt-3 px-5 py-2 rounded-full font-medium"
+                        style={{ background: "var(--accent-focus)15", color: "var(--accent-focus)" }}
+                      >
+                        {activeTimer?.isRunning ? "使用中" : "已暂停"}
+                      </span>
+                      {activeBinding && (
+                        <span className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
+                          {activeBinding.appName} · 纯计时模式
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
             ) : (
               /* Daily Usage */
               <DailyUsageCard embedded />
@@ -146,24 +184,49 @@ export default function TodayPage() {
 
         {/* Stat Cards */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <StatCard
-            icon={<Timer size={18} />}
-            label="总专注"
-            value={formatDuration(totalElapsed)}
-            color="var(--accent-focus)"
-          />
-          <StatCard
-            icon={<Flame size={18} />}
-            label="番茄"
-            value={`${totalPomodoros}`}
-            color="var(--accent-break)"
-          />
-          <StatCard
-            icon={<Zap size={18} />}
-            label="活跃"
-            value={`${activeCount}`}
-            color="var(--accent-warning)"
-          />
+          {isPomodoroMode ? (
+            <>
+              <StatCard
+                icon={<Timer size={18} />}
+                label="总专注"
+                value={formatDuration(totalElapsed)}
+                color="var(--accent-focus)"
+              />
+              <StatCard
+                icon={<Flame size={18} />}
+                label="番茄"
+                value={`${totalPomodoros}`}
+                color="var(--accent-break)"
+              />
+              <StatCard
+                icon={<Zap size={18} />}
+                label="活跃"
+                value={`${activeCount}`}
+                color="var(--accent-warning)"
+              />
+            </>
+          ) : (
+            <>
+              <StatCard
+                icon={<BarChart3 size={18} />}
+                label="总时长"
+                value={formatDuration(totalElapsed)}
+                color="var(--accent-focus)"
+              />
+              <StatCard
+                icon={<Clock size={18} />}
+                label="今日"
+                value={formatDuration(totalElapsed)}
+                color="var(--accent-break)"
+              />
+              <StatCard
+                icon={<Zap size={18} />}
+                label="活跃"
+                value={`${activeCount}`}
+                color="var(--accent-warning)"
+              />
+            </>
+          )}
         </div>
 
         {/* Trends Preview */}

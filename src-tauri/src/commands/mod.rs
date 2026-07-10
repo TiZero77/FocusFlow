@@ -73,6 +73,9 @@ pub fn update_binding(
     if let Some(updated) = bindings.iter().find(|b| b.id == id) {
         if updated.pomodoro_enabled {
             pomodoro.start_session(updated);
+        } else {
+            // Remove existing pomodoro session when disabled
+            pomodoro.remove_session(&updated.bundle_id);
         }
     }
 
