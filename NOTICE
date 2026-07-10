@@ -1,0 +1,46 @@
+# Third-Party Notices
+
+This project uses the following third-party libraries:
+
+## Lucide React (ISC License)
+
+- **Website**: https://lucide.dev
+- **License**: ISC License
+- **Copyright**: Copyright (c) 2026 Lucide Icons and Contributors
+
+Portions of this software are derived from the Feather project:
+
+- **Website**: https://feathericons.com
+- **License**: MIT License
+- **Copyright**: Copyright (c) 2013-present Cole Bemis
+
+## class-variance-authority (Apache License 2.0)
+
+- **Website**: https://cva.style
+- **License**: Apache License, Version 2.0
+- **Copyright**: Copyright 2022 Joe Bell
+
+## Tauri (MIT OR Apache-2.0)
+
+- **Website**: https://tauri.app
+- **License**: MIT License or Apache License, Version 2.0
+
+## React (MIT License)
+
+- **Website**: https://react.dev
+- **License**: MIT License
+- **Copyright**: Copyright (c) Meta Platforms, Inc. and affiliates
+
+## Other MIT-licensed dependencies
+
+The following packages are used under the MIT License:
+- react-dom, react-router-dom, zustand, recharts, clsx, tailwind-merge,
+  tailwindcss, vite, @vitejs/plugin-react, serde, serde_json, rusqlite,
+  uuid, dirs-next, log, windows
+
+## Trademarks
+
+React is a trademark of Meta Platforms, Inc.
+Vite is a trademark of the Vite project.
+These trademarks are used here only to identify the respective software
+and not to imply endorsement or affiliation.
