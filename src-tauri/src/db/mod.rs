@@ -288,6 +288,7 @@ pub fn create_pomodoro_session(
     planned_duration: i64,
     actual_duration: i64,
     completed: bool,
+    started_at: i64,
     pomodoro_index: i32,
 ) -> Result<PomodoroSession> {
     let id = uuid::Uuid::new_v4().to_string();
@@ -296,7 +297,7 @@ pub fn create_pomodoro_session(
     conn.execute(
         "INSERT INTO pomodoro_sessions (id, binding_id, type, planned_duration_seconds, actual_duration_seconds, completed, started_at, ended_at, pomodoro_index, created_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        (&id, binding_id, session_type, planned_duration, actual_duration, completed as i32, now, now, pomodoro_index, now),
+        (&id, binding_id, session_type, planned_duration, actual_duration, completed as i32, started_at, now, pomodoro_index, now),
     )?;
     Ok(PomodoroSession {
         id,
@@ -306,7 +307,7 @@ pub fn create_pomodoro_session(
         actual_duration_seconds: actual_duration,
         completed,
         interrupted_by: None,
-        started_at: now,
+        started_at,
         ended_at: Some(now),
         pomodoro_index,
         created_at: now,

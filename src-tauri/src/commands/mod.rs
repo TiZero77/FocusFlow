@@ -75,7 +75,7 @@ pub fn update_binding(
             pomodoro.start_session(updated);
         } else {
             // Remove existing pomodoro session when disabled
-            pomodoro.remove_session(&updated.bundle_id);
+            pomodoro.remove_session(&updated.bundle_id, Some(&db));
         }
     }
 
@@ -107,7 +107,7 @@ pub fn delete_binding(
         engine.set_bindings(bindings);
 
         // Remove pomodoro session
-        pomodoro.remove_session(&bundle_id);
+        pomodoro.remove_session(&bundle_id, Some(&db));
     } else {
         return Err("Binding not found".to_string());
     }

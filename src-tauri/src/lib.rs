@@ -56,16 +56,19 @@ pub fn run() {
             // Clone state references for closures
             let engine_ref = app.state::<timer::TimerEngine>().inner().clone();
             let db_ref = app.state::<Arc<db::Database>>().inner().clone();
+            let pomodoro_ref = app.state::<pomodoro::PomodoroEngine>().inner().clone();
 
             // Main window: hide on close instead of quitting
             if let Some(main_window) = app.get_webview_window("main") {
                 let win_clone = main_window.clone();
                 let engine_close = engine_ref.clone();
                 let db_close = db_ref.clone();
+                let pomodoro_close = pomodoro_ref.clone();
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         engine_close.save_all(&db_close);
+                        pomodoro_close.save_active_state(&db_close);
                         let _ = win_clone.hide();
                     }
                 });
@@ -93,10 +96,13 @@ pub fn run() {
                             }
                         }
                         "quit" => {
-                            // Save timers before quitting
+                            // Save timers and pomodoro state before quitting
                             if let Some(engine) = app.try_state::<timer::TimerEngine>() {
                                 if let Some(db) = app.try_state::<Arc<db::Database>>() {
                                     engine.save_all(&db);
+                                    if let Some(pomodoro) = app.try_state::<pomodoro::PomodoroEngine>() {
+                                        pomodoro.save_active_state(&db);
+                                    }
                                 }
                             }
                             app.exit(0);
