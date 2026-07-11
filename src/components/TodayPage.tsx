@@ -7,7 +7,7 @@ import DailyUsageCard from "./DailyUsageCard";
 import TrendsPreview from "./TrendsPreview";
 
 export default function TodayPage() {
-  const { bindings, activeTimers, setBindings, selectedBindingId } = useTimerStore();
+  const { bindings, taskGroups, activeTimers, groupPomodoroStates, setBindings, selectedBindingId } = useTimerStore();
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
   const [activeTab, setActiveTab] = useState<"timer" | "usage">("timer");
 
@@ -56,16 +56,23 @@ export default function TodayPage() {
     ? bindings.find((b) => b.id === activeTimer.bindingId)
     : null;
 
-  // Pomodoro state
-  const pomState = activeTimer?.pomodoroState ?? "idle";
+  // Whether the active binding is in a task group
+  const activeGroup = activeBinding?.taskGroupId
+    ? taskGroups.find((g) => g.id === activeBinding.taskGroupId)
+    : undefined;
+  const groupPom = activeGroup ? groupPomodoroStates[activeGroup.id] : undefined;
+
+  // Pomodoro state: use group state if in a group, otherwise individual
+  const pomState = groupPom?.state ?? activeTimer?.pomodoroState ?? "idle";
   const pomColor = getPomodoroColor(pomState);
-  const remaining = activeTimer?.pomodoroRemaining ?? 0;
-  const phaseTotal = activeTimer?.pomodoroPlannedDuration ?? 0;
+  const remaining = groupPom?.remainingSeconds ?? activeTimer?.pomodoroRemaining ?? 0;
+  const phaseTotal = groupPom?.plannedDurationSeconds ?? activeTimer?.pomodoroPlannedDuration ?? 0;
   const progress = phaseTotal > 0 ? ((phaseTotal - remaining) / phaseTotal) * 100 : 0;
 
-  // Whether the active binding uses pomodoro mode
-  const isPomodoroMode = activeBinding?.pomodoroEnabled !== false;
+  const isPomodoroMode = activeBinding?.pomodoroEnabled !== false || !!activeGroup;
   const activeElapsed = activeTimer?.elapsedSeconds ?? 0;
+  // Display name: show group name when in a group, otherwise app name
+  const displayAppName = activeGroup ? activeGroup.name : (activeBinding?.appName ?? "就绪");
 
   return (
     <div className="h-full overflow-y-auto">
@@ -136,7 +143,7 @@ export default function TodayPage() {
                       </span>
                       {activeBinding && (
                         <span className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
-                          {activeBinding.appName} · #{activeTimer?.pomodoroIndex ?? 0}
+                          {displayAppName} · #{activeTimer?.pomodoroIndex ?? 0}
                         </span>
                       )}
                     </div>
@@ -168,7 +175,7 @@ export default function TodayPage() {
                       </span>
                       {activeBinding && (
                         <span className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
-                          {activeBinding.appName} · 纯计时模式
+                          {displayAppName} · 纯计时模式
                         </span>
                       )}
                     </div>

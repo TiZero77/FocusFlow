@@ -11,7 +11,19 @@ export interface AppBinding {
   breakMinutes: number;
   longBreakMinutes: number;
   longBreakInterval: number;
+  taskGroupId: string | null;
   createdAt: number;
+}
+
+export interface TaskGroup {
+  id: string;
+  name: string;
+  focusMinutes: number;
+  breakMinutes: number;
+  longBreakMinutes: number;
+  longBreakInterval: number;
+  createdAt: number;
+  bindings: AppBinding[];
 }
 
 export interface TimerState {
@@ -24,11 +36,29 @@ export interface TimerState {
   pomodoroPlannedDuration: number;
   pomodoroIndex: number;
   sessionCount: number;
+  pomodoroIsPaused: boolean;
+}
+
+/** Pomodoro state for a task group (shared across multiple bindings) */
+export interface GroupPomodoroState {
+  taskGroupId: string;
+  activeBindingId: string;
+  state: "idle" | "focus" | "break" | "longBreak";
+  remainingSeconds: number;
+  plannedDurationSeconds: number;
+  pomodoroIndex: number;
+  sessionCount: number;
+  isPaused: boolean;
+  /** Per-binding elapsed seconds within the current focus pomodoro (resets each focus phase) */
+  bindingElapsed: Record<string, number>;
 }
 
 interface TimerStore {
   bindings: AppBinding[];
+  taskGroups: TaskGroup[];
   activeTimers: Record<string, TimerState>;
+  /** Group pomodoro states keyed by taskGroupId */
+  groupPomodoroStates: Record<string, GroupPomodoroState>;
   soundEnabled: boolean;
   /** Currently selected binding for pomodoro display (null = auto-follow foreground) */
   selectedBindingId: string | null;
@@ -38,6 +68,7 @@ interface TimerStore {
   addBinding: (binding: AppBinding) => void;
   removeBinding: (id: string) => void;
   updateBindingInStore: (binding: AppBinding) => void;
+  setTaskGroups: (groups: TaskGroup[]) => void;
   updateTimer: (bindingId: string, state: Partial<TimerState>) => void;
   updatePomodoro: (
     bindingId: string,
@@ -45,7 +76,19 @@ interface TimerStore {
     remaining: number,
     plannedDuration: number,
     index: number,
-    sessionCount: number
+    sessionCount: number,
+    isPaused: boolean
+  ) => void;
+  updateGroupPomodoro: (
+    taskGroupId: string,
+    activeBindingId: string,
+    state: string,
+    remaining: number,
+    plannedDuration: number,
+    index: number,
+    sessionCount: number,
+    isPaused: boolean,
+    bindingElapsed: Record<string, number>
   ) => void;
   setSoundEnabled: (enabled: boolean) => void;
   /** Set the selected binding for pomodoro display */
@@ -58,7 +101,9 @@ interface TimerStore {
 
 export const useTimerStore = create<TimerStore>((set) => ({
   bindings: [],
+  taskGroups: [],
   activeTimers: {},
+  groupPomodoroStates: {},
   soundEnabled: true,
   selectedBindingId: null,
   isSelectionLocked: false,
@@ -76,6 +121,7 @@ export const useTimerStore = create<TimerStore>((set) => ({
     set((s) => ({
       bindings: s.bindings.map((b) => (b.id === binding.id ? binding : b)),
     })),
+  setTaskGroups: (taskGroups) => set({ taskGroups }),
   updateTimer: (bindingId, state) =>
     set((s) => {
       console.log("[Store] updateTimer called:", bindingId, state);
@@ -104,7 +150,7 @@ export const useTimerStore = create<TimerStore>((set) => ({
         activeTimers: { ...s.activeTimers, [bindingId]: created },
       };
     }),
-  updatePomodoro: (bindingId, state, remaining, plannedDuration, index, sessionCount) =>
+  updatePomodoro: (bindingId, state, remaining, plannedDuration, index, sessionCount, isPaused) =>
     set((s) => {
       console.log("[Store] updatePomodoro called:", bindingId, state, remaining, plannedDuration);
       const prev = s.activeTimers[bindingId];
@@ -116,6 +162,7 @@ export const useTimerStore = create<TimerStore>((set) => ({
           pomodoroPlannedDuration: plannedDuration,
           pomodoroIndex: index,
           sessionCount,
+          pomodoroIsPaused: isPaused,
         };
         console.log("[Store] updatePomodoro merged:", merged);
         return {
@@ -136,10 +183,28 @@ export const useTimerStore = create<TimerStore>((set) => ({
             pomodoroPlannedDuration: plannedDuration,
             pomodoroIndex: index,
             sessionCount,
+            pomodoroIsPaused: isPaused,
           },
         },
       };
     }),
+  updateGroupPomodoro: (taskGroupId, activeBindingId, state, remaining, plannedDuration, index, sessionCount, isPaused, bindingElapsed) =>
+    set((s) => ({
+      groupPomodoroStates: {
+        ...s.groupPomodoroStates,
+        [taskGroupId]: {
+          taskGroupId,
+          activeBindingId,
+          state: state as GroupPomodoroState["state"],
+          remainingSeconds: remaining,
+          plannedDurationSeconds: plannedDuration,
+          pomodoroIndex: index,
+          sessionCount,
+          isPaused,
+          bindingElapsed,
+        },
+      },
+    })),
   setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
   selectBinding: (bindingId) =>
     set({ selectedBindingId: bindingId }),

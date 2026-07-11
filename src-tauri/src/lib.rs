@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tauri::Manager;
+use tauri::Emitter;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::TrayIconBuilder;
 
@@ -58,18 +59,26 @@ pub fn run() {
             let db_ref = app.state::<Arc<db::Database>>().inner().clone();
             let pomodoro_ref = app.state::<pomodoro::PomodoroEngine>().inner().clone();
 
-            // Main window: hide on close instead of quitting
+            // Main window: intercept close to show confirmation dialog if pomodoro is active
             if let Some(main_window) = app.get_webview_window("main") {
                 let win_clone = main_window.clone();
                 let engine_close = engine_ref.clone();
                 let db_close = db_ref.clone();
                 let pomodoro_close = pomodoro_ref.clone();
+                let app_handle_close = app.handle().clone();
                 main_window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
-                        engine_close.save_all(&db_close);
-                        pomodoro_close.save_active_state(&db_close);
-                        let _ = win_clone.hide();
+                        if pomodoro_close.has_active_session() {
+                            // Show window and emit dialog event
+                            let _ = win_clone.show();
+                            let _ = win_clone.set_focus();
+                            let _ = app_handle_close.emit("show-close-dialog", ());
+                        } else {
+                            // No active pomodoro — save and hide as before
+                            engine_close.save_all(&db_close);
+                            let _ = win_clone.hide();
+                        }
                     }
                 });
             }
@@ -96,16 +105,27 @@ pub fn run() {
                             }
                         }
                         "quit" => {
-                            // Save timers and pomodoro state before quitting
-                            if let Some(engine) = app.try_state::<timer::TimerEngine>() {
-                                if let Some(db) = app.try_state::<Arc<db::Database>>() {
-                                    engine.save_all(&db);
-                                    if let Some(pomodoro) = app.try_state::<pomodoro::PomodoroEngine>() {
-                                        pomodoro.save_active_state(&db);
+                            // If active pomodoro, show dialog; otherwise exit directly
+                            let has_pomodoro = app.try_state::<pomodoro::PomodoroEngine>()
+                                .map(|p| p.has_active_session())
+                                .unwrap_or(false);
+
+                            if has_pomodoro {
+                                // Show main window so dialog is visible
+                                if let Some(win) = app.get_webview_window("main") {
+                                    let _ = win.show();
+                                    let _ = win.set_focus();
+                                }
+                                let _ = app.emit("show-close-dialog", ());
+                            } else {
+                                // No active pomodoro — save and exit
+                                if let Some(engine) = app.try_state::<timer::TimerEngine>() {
+                                    if let Some(db) = app.try_state::<Arc<db::Database>>() {
+                                        engine.save_all(&db);
                                     }
                                 }
+                                app.exit(0);
                             }
-                            app.exit(0);
                         }
                         _ => {}
                     }
@@ -197,6 +217,12 @@ pub fn run() {
             commands::create_binding,
             commands::update_binding,
             commands::delete_binding,
+            commands::get_task_groups,
+            commands::create_task_group,
+            commands::update_task_group,
+            commands::delete_task_group,
+            commands::add_binding_to_group,
+            commands::remove_binding_from_group,
             commands::get_current_app,
             commands::get_running_apps,
             commands::search_installed_apps,
@@ -209,6 +235,10 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::clear_all_data,
+            commands::confirm_close,
+            commands::has_active_pomodoro,
+            commands::toggle_pomodoro_pause,
+            commands::mark_rotten_tomato,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

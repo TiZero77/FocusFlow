@@ -46,6 +46,69 @@ export async function deleteBinding(id: string): Promise<void> {
   return invoke("delete_binding", { id });
 }
 
+// ── Task Group commands ──
+
+export interface TaskGroup {
+  id: string;
+  name: string;
+  focusMinutes: number;
+  breakMinutes: number;
+  longBreakMinutes: number;
+  longBreakInterval: number;
+  createdAt: number;
+  bindings: AppBinding[];
+}
+
+export async function getTaskGroups(): Promise<TaskGroup[]> {
+  return invoke("get_task_groups");
+}
+
+export async function createTaskGroup(params: {
+  name: string;
+  focusMinutes: number;
+  breakMinutes: number;
+  longBreakMinutes: number;
+  longBreakInterval: number;
+}): Promise<TaskGroup> {
+  return invoke("create_task_group", {
+    name: params.name,
+    focusMinutes: params.focusMinutes,
+    breakMinutes: params.breakMinutes,
+    longBreakMinutes: params.longBreakMinutes,
+    longBreakInterval: params.longBreakInterval,
+  });
+}
+
+export async function updateTaskGroup(params: {
+  id: string;
+  name?: string;
+  focusMinutes?: number;
+  breakMinutes?: number;
+  longBreakMinutes?: number;
+  longBreakInterval?: number;
+}): Promise<TaskGroup> {
+  return invoke("update_task_group", {
+    id: params.id,
+    name: params.name ?? null,
+    focusMinutes: params.focusMinutes ?? null,
+    breakMinutes: params.breakMinutes ?? null,
+    longBreakMinutes: params.longBreakMinutes ?? null,
+    longBreakInterval: params.longBreakInterval ?? null,
+  });
+}
+
+export async function deleteTaskGroup(id: string): Promise<void> {
+  return invoke("delete_task_group", { id });
+}
+
+export async function addBindingToGroup(groupId: string, bindingId: string): Promise<void> {
+  return invoke("add_binding_to_group", { groupId, bindingId });
+}
+
+export async function removeBindingFromGroup(bindingId: string): Promise<void> {
+  return invoke("remove_binding_from_group", { bindingId });
+}
+
 // ── Monitor commands ──
 
 export interface ForegroundApp {
@@ -88,10 +151,21 @@ export interface PomodoroStateUpdate {
   plannedDurationSeconds: number;
   pomodoroIndex: number;
   sessionCount: number;
+  isPaused: boolean;
+  taskGroupId?: string;
+  bindingElapsed?: Record<string, number>;
 }
 
 export async function getPomodoroStates(): Promise<PomodoroStateUpdate[]> {
   return invoke("get_pomodoro_states");
+}
+
+export async function togglePomodoroPause(bindingId: string): Promise<boolean> {
+  return invoke("toggle_pomodoro_pause", { bindingId });
+}
+
+export async function markRottenTomato(): Promise<boolean> {
+  return invoke("mark_rotten_tomato");
 }
 
 // ── Events ──

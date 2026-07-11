@@ -13,7 +13,33 @@ pub struct AppBinding {
     pub break_minutes: i32,
     pub long_break_minutes: i32,
     pub long_break_interval: i32,
+    pub task_group_id: Option<String>,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskGroup {
+    pub id: String,
+    pub name: String,
+    pub focus_minutes: i32,
+    pub break_minutes: i32,
+    pub long_break_minutes: i32,
+    pub long_break_interval: i32,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskGroupWithBindings {
+    pub id: String,
+    pub name: String,
+    pub focus_minutes: i32,
+    pub break_minutes: i32,
+    pub long_break_minutes: i32,
+    pub long_break_interval: i32,
+    pub created_at: i64,
+    pub bindings: Vec<AppBinding>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

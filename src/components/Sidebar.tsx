@@ -6,29 +6,25 @@ import {
   Link2,
   Settings,
   Flame,
+  Timer,
 } from "lucide-react";
-import { useTimerStore } from "../stores/timerStore";
+import { useTimerStore, type AppBinding, type TimerState, type TaskGroup, type GroupPomodoroState } from "../stores/timerStore";
 import { getUsageRecords, type UsageRecord } from "../lib/tauri";
 import { useEffect, useState } from "react";
 import { formatDuration, getPomodoroColor } from "../lib/utils";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "今日" },
+  { to: "/pomodoro", icon: Timer, label: "番茄" },
   { to: "/trends", icon: TrendingUp, label: "趋势" },
   { to: "/insights", icon: Lightbulb, label: "洞察" },
   { to: "/bindings", icon: Link2, label: "绑定" },
 ];
 
 export default function Sidebar() {
-  const { bindings, activeTimers, selectedBindingId, isSelectionLocked, selectBinding, lockSelection, unlockSelection } = useTimerStore();
+  const { bindings, taskGroups, activeTimers, groupPomodoroStates, selectedBindingId, isSelectionLocked, selectBinding, lockSelection, unlockSelection } = useTimerStore();
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([]);
   const timerEntries = Object.values(activeTimers).filter(Boolean);
-  // Show all timers that have a binding
-  const activeTimerList = timerEntries.filter((t) => {
-    if (!t) return false;
-    const binding = bindings.find((b) => b.id === t.bindingId);
-    return !!binding;
-  });
 
   useEffect(() => {
     const now = new Date();
@@ -39,7 +35,7 @@ export default function Sidebar() {
     getUsageRecords(today).then(setUsageRecords).catch(console.error);
   }, []);
 
-  // Calculate app ranking
+  // Calculate per-binding usage time (DB records + live elapsed)
   const usageByBinding = new Map<string, number>();
   for (const record of usageRecords) {
     usageByBinding.set(record.bindingId, (usageByBinding.get(record.bindingId) ?? 0) + record.durationSeconds);
@@ -49,6 +45,34 @@ export default function Sidebar() {
       usageByBinding.set(timer.bindingId, (usageByBinding.get(timer.bindingId) ?? 0) + timer.elapsedSeconds);
     }
   }
+
+  // Build sidebar entries: one entry per ungrouped binding + one entry per group
+  type SidebarEntry =
+    | { kind: "binding"; binding: AppBinding; timer: TimerState | undefined }
+    | { kind: "group"; group: TaskGroup; groupPom: GroupPomodoroState | undefined; members: AppBinding[] };
+
+  const sidebarEntries: SidebarEntry[] = [];
+  const groupedBindingIds = new Set<string>();
+
+  // One entry per task group
+  for (const group of taskGroups) {
+    const members = bindings.filter((b) => b.taskGroupId === group.id);
+    if (members.length === 0) continue;
+    members.forEach((m) => groupedBindingIds.add(m.id));
+    const groupPom = groupPomodoroStates[group.id];
+    sidebarEntries.push({ kind: "group", group, groupPom, members });
+  }
+
+  // One entry per ungrouped binding (only if it has an active timer)
+  for (const binding of bindings) {
+    if (groupedBindingIds.has(binding.id)) continue;
+    const timer = activeTimers[binding.id];
+    if (timer) {
+      sidebarEntries.push({ kind: "binding", binding, timer });
+    }
+  }
+
+  // App ranking (all bindings, including grouped ones)
   const ranking = bindings
     .map((b) => ({ id: b.id, name: b.appName, seconds: usageByBinding.get(b.id) ?? 0 }))
     .filter((r) => r.seconds > 0)
@@ -126,7 +150,7 @@ export default function Sidebar() {
       {/* Scrollable content area */}
       <div className="flex-1 overflow-y-auto px-4 pb-4">
         {/* Active Timers */}
-        {activeTimerList.length > 0 && (
+        {sidebarEntries.length > 0 && (
           <div className="mb-6">
             <div
               className="text-[10px] font-medium uppercase tracking-wider px-4 mb-3"
@@ -135,25 +159,118 @@ export default function Sidebar() {
               实时计时
             </div>
             <div className="flex flex-col gap-2">
-              {activeTimerList.map((timer) => {
+              {sidebarEntries.map((entry) => {
+                if (entry.kind === "group") {
+                  // ── Group card: one card for the entire task group ──
+                  const { group, groupPom, members } = entry;
+                  const pomState = groupPom?.state ?? "idle";
+                  const isPomActive = groupPom && pomState !== "idle";
+                  const color = isPomActive ? getPomodoroColor(pomState) : "var(--accent-focus)";
+                  // Find active app name from groupPom's activeBindingId
+                  const activeAppName = groupPom
+                    ? bindings.find((b) => b.id === groupPom.activeBindingId)?.appName ?? group.name
+                    : group.name;
+                  // Sum elapsed time across all group members
+                  const totalElapsed = members.reduce(
+                    (sum, m) => sum + (activeTimers[m.id]?.elapsedSeconds ?? 0), 0
+                  );
+                  const anyRunning = members.some((m) => activeTimers[m.id]?.isRunning);
+                  // Use group's first member for selection
+                  const selectId = members[0]?.id;
+                  const isSelected = selectId && selectedBindingId === selectId;
+                  const handleCardClick = () => {
+                    if (!selectId) return;
+                    if (isSelected && isSelectionLocked) {
+                      unlockSelection();
+                    } else {
+                      selectBinding(selectId);
+                      lockSelection();
+                    }
+                  };
+                  return (
+                    <div
+                      key={`group-${group.id}`}
+                      className="px-4 py-3 rounded-xl cursor-pointer transition-all duration-200"
+                      style={{
+                        background: isSelected ? "var(--bg-hover)" : "var(--bg-secondary)",
+                        outline: isSelected ? `2px solid ${color}80` : "none",
+                        outlineOffset: "-1px",
+                      }}
+                      onClick={handleCardClick}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div
+                          className={`w-2.5 h-2.5 rounded-full ${anyRunning ? 'animate-pulse' : ''}`}
+                          style={{
+                            background: anyRunning ? color : "var(--accent-pause)",
+                            boxShadow: anyRunning ? `0 0 8px ${color}60` : "none",
+                          }}
+                        />
+                        <span className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                          {group.name}
+                        </span>
+                        <span
+                          className="px-1.5 py-0.5 rounded text-[9px] font-medium shrink-0"
+                          style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa" }}
+                        >
+                          跨应用
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[11px]" style={{ color: anyRunning ? color : "var(--text-tertiary)" }}>
+                          {anyRunning
+                            ? (isPomActive ? getPomodoroLabel(pomState) : "使用中")
+                            : "已暂停"}
+                        </span>
+                        <span
+                          className="text-sm font-mono font-semibold tabular-nums"
+                          style={{ color: anyRunning ? color : "var(--text-tertiary)" }}
+                        >
+                          {isPomActive && groupPom
+                            ? formatDuration(groupPom.remainingSeconds)
+                            : formatDuration(totalElapsed)}
+                        </span>
+                      </div>
+                      {/* Per-app usage breakdown (current focus pomodoro only) */}
+                      {groupPom && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {members.map((m) => {
+                            const appSeconds = groupPom.bindingElapsed[m.id] ?? 0;
+                            if (appSeconds <= 0) return null;
+                            return (
+                              <span
+                                key={m.id}
+                                className="px-1.5 py-0.5 rounded text-[9px]"
+                                style={{ background: "var(--bg-tertiary)", color: "var(--text-secondary)" }}
+                              >
+                                {m.appName} {formatDuration(appSeconds)}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // ── Individual binding card (ungrouped) ──
+                const { binding, timer } = entry;
                 if (!timer) return null;
-                const binding = bindings.find((b) => b.id === timer.bindingId);
-                if (!binding) return null;
                 const isPomodoro = binding.pomodoroEnabled !== false;
                 const color = isPomodoro ? getPomodoroColor(timer.pomodoroState) : "var(--accent-focus)";
                 const isRunning = timer.isRunning;
-                const isSelected = selectedBindingId === timer.bindingId;
+                const isSelected = selectedBindingId === binding.id;
                 const handleCardClick = () => {
                   if (isSelected && isSelectionLocked) {
                     unlockSelection();
                   } else {
-                    selectBinding(timer.bindingId);
+                    selectBinding(binding.id);
                     lockSelection();
                   }
                 };
                 return (
                   <div
-                    key={timer.bindingId}
+                    key={binding.id}
                     className="px-4 py-3 rounded-xl cursor-pointer transition-all duration-200"
                     style={{
                       background: isSelected ? "var(--bg-hover)" : "var(--bg-secondary)",

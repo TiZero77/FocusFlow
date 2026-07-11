@@ -179,6 +179,11 @@ impl TimerEngine {
                             pomodoro.pause_session(&timer.binding_id);
                         }
                     }
+                    // Pause all group sessions
+                    let groups = db::get_task_groups(&db).unwrap_or_default();
+                    for group in &groups {
+                        pomodoro.pause_group_session(&group.id);
+                    }
                     emit_to_all(&app_handle, "idle-changed", true);
                 } else if !is_currently_idle && was_idle {
                     // Just came back from idle — resume
@@ -196,7 +201,12 @@ impl TimerEngine {
 
                         if let Some(binding) = binding {
                             resume_timer(&binding, &active_timers);
-                            pomodoro.start_session(&binding);
+                            // Check if binding belongs to a task group
+                            if let Ok(Some(group)) = db::get_group_for_binding(&db, &binding.id) {
+                                pomodoro.resume_group_session(&group.id, &binding.id);
+                            } else {
+                                pomodoro.start_session(&binding);
+                            }
                         }
                     }
 
@@ -228,7 +238,31 @@ impl TimerEngine {
                         // App changed — pause timer for previous app (don't stop/remove)
                         if let Some(prev_bundle) = &current_bundle {
                             pause_timer(prev_bundle, &active_timers);
-                            pomodoro.pause_session(prev_bundle);
+                            // Check if previous app was in a task group
+                            let prev_binding = {
+                                let lock = bindings.lock().unwrap();
+                                find_matching_binding(&lock, prev_bundle)
+                            };
+                            if let Some(ref pb) = prev_binding {
+                                if let Ok(Some(prev_group)) = db::get_group_for_binding(&db, &pb.id) {
+                                    // Check if new app is also in the same group
+                                    let new_binding = {
+                                        let lock = bindings.lock().unwrap();
+                                        find_matching_binding(&lock, &new_bundle)
+                                    };
+                                    let same_group = new_binding.as_ref()
+                                        .and_then(|nb| db::get_group_for_binding(&db, &nb.id).ok().flatten())
+                                        .map(|ng| ng.id == prev_group.id)
+                                        .unwrap_or(false);
+                                    if !same_group {
+                                        pomodoro.pause_group_session(&prev_group.id);
+                                    }
+                                } else {
+                                    pomodoro.pause_session(prev_bundle);
+                                }
+                            } else {
+                                pomodoro.pause_session(prev_bundle);
+                            }
                         }
 
                         // Resume or start timer for new app if bound
@@ -239,7 +273,12 @@ impl TimerEngine {
 
                         if let Some(binding) = binding {
                             resume_or_start_timer(&binding, &active_timers);
-                            pomodoro.start_session(&binding);
+                            // Check if binding belongs to a task group
+                            if let Ok(Some(group)) = db::get_group_for_binding(&db, &binding.id) {
+                                pomodoro.start_group_session(&group, &binding.id);
+                            } else {
+                                pomodoro.start_session(&binding);
+                            }
                             emit_to_all(
                                 &app_handle,
                                 "app-changed",
@@ -264,7 +303,6 @@ impl TimerEngine {
                         *current_app.lock().unwrap() = Some(new_bundle);
                     } else {
                         // Same app — check if we need to start a timer for it
-                        // This handles the case where a binding was created while the app was already in foreground
                         let has_active_timer = {
                             let lock = active_timers.lock().unwrap();
                             lock.contains_key(&new_bundle)
@@ -279,7 +317,11 @@ impl TimerEngine {
                             if let Some(binding) = binding {
                                 log::info!("[Timer] starting timer for already-focused app: {}", binding.app_name);
                                 resume_or_start_timer(&binding, &active_timers);
-                                pomodoro.start_session(&binding);
+                                if let Ok(Some(group)) = db::get_group_for_binding(&db, &binding.id) {
+                                    pomodoro.start_group_session(&group, &binding.id);
+                                } else {
+                                    pomodoro.start_session(&binding);
+                                }
                             }
                         }
                     }
@@ -300,6 +342,11 @@ impl TimerEngine {
                             if timer.is_running {
                                 pomodoro.pause_session(&timer.binding_id);
                             }
+                        }
+                        // Pause all group sessions
+                        let groups = db::get_task_groups(&db).unwrap_or_default();
+                        for group in &groups {
+                            pomodoro.pause_group_session(&group.id);
                         }
                         *current_app.lock().unwrap() = None;
                     }

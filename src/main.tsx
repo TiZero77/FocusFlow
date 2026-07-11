@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
 import TodayPage from "./components/TodayPage";
+import PomodoroPage from "./components/PomodoroPage";
 import TrendsPage from "./components/TrendsPage";
 import BindingsPage from "./components/BindingsPage";
 import InsightsPage from "./components/InsightsPage";
@@ -16,6 +17,7 @@ createRoot(document.getElementById("root")!).render(
       <Routes>
         <Route path="/" element={<App />}>
           <Route index element={<TodayPage />} />
+          <Route path="pomodoro" element={<PomodoroPage />} />
           <Route path="trends" element={<TrendsPage />} />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="bindings" element={<BindingsPage />} />

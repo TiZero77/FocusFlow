@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { Coffee, Flame, Pin, PinOff, BarChart3 } from "lucide-react";
+import { Coffee, Flame, Pin, PinOff, BarChart3, Pause, Play } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -8,6 +8,8 @@ import {
   getTimerStates,
   getSetting,
   getUsageRecords,
+  getTaskGroups,
+  togglePomodoroPause,
   type UsageRecord,
 } from "../lib/tauri";
 import type { AppBinding } from "../stores/timerStore";
@@ -20,11 +22,33 @@ interface LocalPomodoroState {
   remainingSeconds: number;
   pomodoroIndex: number;
   sessionCount: number;
+  isPaused: boolean;
+  taskGroupId?: string;
+}
+
+interface LocalGroupPomodoroState {
+  taskGroupId: string;
+  activeBindingId: string;
+  state: string;
+  remainingSeconds: number;
+  plannedDurationSeconds: number;
+  pomodoroIndex: number;
+  sessionCount: number;
+  isPaused: boolean;
+  bindingElapsed: Record<string, number>;
+}
+
+interface TaskGroupInfo {
+  id: string;
+  name: string;
+  bindings: AppBinding[];
 }
 
 export default function FloatingWidget() {
   const [bindings, setBindings] = useState<AppBinding[]>([]);
+  const [taskGroups, setTaskGroups] = useState<TaskGroupInfo[]>([]);
   const [pomodoros, setPomodoros] = useState<Map<string, LocalPomodoroState>>(new Map());
+  const [groupPomodoros, setGroupPomodoros] = useState<Map<string, LocalGroupPomodoroState>>(new Map());
   const [hovered, setHovered] = useState(false);
   const [opacity, setOpacity] = useState(90);
   const [isPinned, setIsPinned] = useState(true);
@@ -58,6 +82,7 @@ export default function FloatingWidget() {
   useEffect(() => {
     const load = () => {
       getBindings().then(setBindings).catch(console.error);
+      getTaskGroups().then(setTaskGroups).catch(console.error);
       getSetting("widget_opacity").then((v) => { if (v) setOpacity(Number(v)); });
       getSetting("widget_mode").then((v) => {
         if (v === "usage" || v === "pomodoro") setWidgetMode(v);
@@ -92,19 +117,46 @@ export default function FloatingWidget() {
       (event) => {
         const p = event.payload;
         const bindingId = String(p.bindingId ?? p.binding_id ?? "");
+        const taskGroupId = p.taskGroupId ? String(p.taskGroupId) : (p.task_group_id ? String(p.task_group_id) : undefined);
         if (!bindingId) return;
 
-        setPomodoros((prev) => {
-          const next = new Map(prev);
-          next.set(bindingId, {
-            bindingId,
-            state: String(p.state ?? "idle"),
-            remainingSeconds: Number(p.remainingSeconds ?? p.remaining_seconds ?? 0),
-            pomodoroIndex: Number(p.pomodoroIndex ?? p.pomodoro_index ?? 0),
-            sessionCount: Number(p.sessionCount ?? p.session_count ?? 0),
+        if (taskGroupId) {
+          // Group pomodoro — store by taskGroupId
+          const rawElapsed = p.bindingElapsed ?? p.binding_elapsed ?? {};
+          const elapsed: Record<string, number> = {};
+          for (const [k, v] of Object.entries(rawElapsed as Record<string, unknown>)) {
+            elapsed[k] = Number(v);
+          }
+          setGroupPomodoros((prev) => {
+            const next = new Map(prev);
+            next.set(taskGroupId, {
+              taskGroupId,
+              activeBindingId: bindingId,
+              state: String(p.state ?? "idle"),
+              remainingSeconds: Number(p.remainingSeconds ?? p.remaining_seconds ?? 0),
+              plannedDurationSeconds: Number(p.plannedDurationSeconds ?? p.planned_duration_seconds ?? 0),
+              pomodoroIndex: Number(p.pomodoroIndex ?? p.pomodoro_index ?? 0),
+              sessionCount: Number(p.sessionCount ?? p.session_count ?? 0),
+              isPaused: Boolean(p.isPaused ?? p.is_paused ?? false),
+              bindingElapsed: elapsed,
+            });
+            return next;
           });
-          return next;
-        });
+        } else {
+          // Individual pomodoro
+          setPomodoros((prev) => {
+            const next = new Map(prev);
+            next.set(bindingId, {
+              bindingId,
+              state: String(p.state ?? "idle"),
+              remainingSeconds: Number(p.remainingSeconds ?? p.remaining_seconds ?? 0),
+              pomodoroIndex: Number(p.pomodoroIndex ?? p.pomodoro_index ?? 0),
+              sessionCount: Number(p.sessionCount ?? p.session_count ?? 0),
+              isPaused: Boolean(p.isPaused ?? p.is_paused ?? false),
+            });
+            return next;
+          });
+        }
       }
     );
 
@@ -145,13 +197,33 @@ export default function FloatingWidget() {
         setPomodoros((prev) => {
           const next = new Map(prev);
           for (const p of pomodoroStates) {
-            next.set(p.bindingId, {
-              bindingId: p.bindingId,
-              state: p.state,
-              remainingSeconds: p.remainingSeconds,
-              pomodoroIndex: p.pomodoroIndex,
-              sessionCount: p.sessionCount,
-            });
+            if (p.taskGroupId) {
+              // Group pomodoro — also update groupPomodoros
+              setGroupPomodoros((gPrev) => {
+                const gNext = new Map(gPrev);
+                gNext.set(p.taskGroupId!, {
+                  taskGroupId: p.taskGroupId!,
+                  activeBindingId: p.bindingId,
+                  state: p.state,
+                  remainingSeconds: p.remainingSeconds,
+                  plannedDurationSeconds: p.plannedDurationSeconds,
+                  pomodoroIndex: p.pomodoroIndex,
+                  sessionCount: p.sessionCount,
+                  isPaused: p.isPaused,
+                  bindingElapsed: p.bindingElapsed ?? {},
+                });
+                return gNext;
+              });
+            } else {
+              next.set(p.bindingId, {
+                bindingId: p.bindingId,
+                state: p.state,
+                remainingSeconds: p.remainingSeconds,
+                pomodoroIndex: p.pomodoroIndex,
+                sessionCount: p.sessionCount,
+                isPaused: p.isPaused,
+              });
+            }
           }
           return next;
         });
@@ -203,23 +275,46 @@ export default function FloatingWidget() {
   const activeBindingId =
     selectedBindingId ??
     Array.from(pomodoros.values()).find((p) => p.state === "focus")?.bindingId ??
+    Array.from(groupPomodoros.values()).find((p) => p.state === "focus")?.activeBindingId ??
     pomodoros.values().next().value?.bindingId ??
+    groupPomodoros.values().next().value?.activeBindingId ??
     bindings[0]?.id;
   const activeBinding = bindings.find((b) => b.id === activeBindingId);
   const activePomodoro = activeBindingId ? pomodoros.get(activeBindingId) : undefined;
 
+  // Check if active binding belongs to a task group
+  const activeGroup = activeBinding?.taskGroupId
+    ? taskGroups.find((g) => g.id === activeBinding.taskGroupId)
+    : undefined;
+  const groupPom = activeGroup ? groupPomodoros.get(activeGroup.id) : undefined;
+
   // Effective mode: follow binding's pomodoroEnabled, fallback to global widgetMode
-  const effectiveMode = activeBinding?.pomodoroEnabled === false ? "usage" : widgetMode;
+  // If binding is in a task group, always use pomodoro mode
+  const effectiveMode = (activeBinding?.pomodoroEnabled === false && !activeGroup) ? "usage" : widgetMode;
 
-  const pomState = activePomodoro?.state ?? "idle";
+  // Use group pomodoro state if available, otherwise individual
+  const pomState = groupPom?.state ?? activePomodoro?.state ?? "idle";
+  const pomIsPaused = groupPom?.isPaused ?? activePomodoro?.isPaused ?? false;
   const pomColor = getPomodoroColor(pomState);
-  const remaining = activePomodoro?.remainingSeconds ?? 0;
-  const appName = activeBinding?.appName ?? "就绪";
-  const pomIndex = activePomodoro?.pomodoroIndex ?? 0;
+  const remaining = groupPom?.remainingSeconds ?? activePomodoro?.remainingSeconds ?? 0;
+  // Display name: show group name when in a group
+  const appName = activeGroup ? activeGroup.name : (activeBinding?.appName ?? "就绪");
+  const pomIndex = groupPom?.pomodoroIndex ?? activePomodoro?.pomodoroIndex ?? 0;
 
-  // Calculate planned duration from binding settings — single source of truth,
-  // no dependency on event/poll carrying the value.
-  const phaseTotal = getPhaseTotal(pomState, activeBinding);
+  // Toggle pomodoro pause
+  const handleTogglePause = useCallback(async () => {
+    if (!activeBindingId) return;
+    try {
+      await togglePomodoroPause(activeBindingId);
+    } catch (err) {
+      console.error("Failed to toggle pomodoro pause:", err);
+    }
+  }, [activeBindingId]);
+
+  // Calculate planned duration: use group settings if in a group, otherwise binding settings
+  const phaseTotal = groupPom
+    ? groupPom.plannedDurationSeconds
+    : getPhaseTotal(pomState, activeBinding);
   const phaseProgress = phaseTotal > 0 ? Math.round(((phaseTotal - remaining) / phaseTotal) * 100) : 0;
 
   // Seed per-binding unpersisted elapsed from backend on mount
@@ -300,9 +395,9 @@ export default function FloatingWidget() {
           <div className="flex items-center gap-2 shrink-0">
             {effectiveMode === "pomodoro" && (
               <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full" style={{ background: pomColor, boxShadow: `0 0 6px ${pomColor}50` }} />
-                <span className="text-[10px] font-medium" style={{ color: pomColor }}>
-                  {getPomodoroLabel(pomState)}
+                <div className="w-2 h-2 rounded-full" style={{ background: pomIsPaused ? "var(--text-tertiary)" : pomColor, boxShadow: pomIsPaused ? "none" : `0 0 6px ${pomColor}50` }} />
+                <span className="text-[10px] font-medium" style={{ color: pomIsPaused ? "var(--text-tertiary)" : pomColor }}>
+                  {pomIsPaused ? "已暂停" : getPomodoroLabel(pomState)}
                 </span>
               </div>
             )}
@@ -349,10 +444,25 @@ export default function FloatingWidget() {
 
               {/* Timer */}
               <div className="flex items-center justify-between">
-                <span className="text-2xl font-mono font-bold tabular-nums" style={{ color: pomColor }}>
+                <span
+                  className="text-2xl font-mono font-bold tabular-nums"
+                  style={{ color: pomIsPaused ? "var(--text-tertiary)" : pomColor }}
+                >
                   {formatTimer(remaining)}
                 </span>
                 <div className="flex items-center gap-1.5">
+                  {/* Pause/Resume button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleTogglePause(); }}
+                    className="p-1 rounded-full hover:bg-black/10 transition-colors"
+                    title={pomIsPaused ? "恢复" : "暂停"}
+                  >
+                    {pomIsPaused ? (
+                      <Play size={12} style={{ color: "var(--text-secondary)" }} />
+                    ) : (
+                      <Pause size={12} style={{ color: "var(--text-tertiary)" }} />
+                    )}
+                  </button>
                   {pomState === "break" || pomState === "longBreak" ? (
                     <Coffee size={14} style={{ color: "var(--text-tertiary)" }} />
                   ) : (

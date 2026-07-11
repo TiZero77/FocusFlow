@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result};
 use std::sync::Mutex;
 
-use crate::models::{AppBinding, PomodoroSession, UsageRecord};
+use crate::models::{AppBinding, PomodoroSession, TaskGroup, TaskGroupWithBindings, UsageRecord};
 
 pub struct Database {
     pub conn: Mutex<Connection>,
@@ -61,11 +61,41 @@ impl Database {
                 value TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS task_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                focus_minutes INTEGER DEFAULT 25,
+                break_minutes INTEGER DEFAULT 5,
+                long_break_minutes INTEGER DEFAULT 15,
+                long_break_interval INTEGER DEFAULT 4,
+                created_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS task_group_bindings (
+                group_id TEXT NOT NULL REFERENCES task_groups(id) ON DELETE CASCADE,
+                binding_id TEXT NOT NULL REFERENCES app_bindings(id) ON DELETE CASCADE,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (group_id, binding_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_usage_date ON usage_records(session_date);
             CREATE INDEX IF NOT EXISTS idx_usage_binding ON usage_records(binding_id);
             CREATE INDEX IF NOT EXISTS idx_pomodoro_date ON pomodoro_sessions(created_at);
+            CREATE INDEX IF NOT EXISTS idx_group_binding ON task_group_bindings(binding_id);
             ",
         )?;
+
+        // Migration: add task_group_id column to app_bindings if missing
+        {
+            let mut stmt = conn.prepare("PRAGMA table_info(app_bindings)")?;
+            let columns: Vec<String> = stmt.query_map([], |row| row.get::<_, String>(1))?
+                .filter_map(|r| r.ok())
+                .collect();
+            if !columns.contains(&"task_group_id".to_string()) {
+                conn.execute("ALTER TABLE app_bindings ADD COLUMN task_group_id TEXT", [])?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -76,7 +106,7 @@ pub fn get_bindings(db: &Database) -> Result<Vec<AppBinding>> {
     let conn = db.conn.lock().unwrap();
     let mut stmt = conn.prepare(
         "SELECT id, app_name, bundle_id, icon_path, tracking_enabled, pomodoro_enabled,
-         focus_minutes, break_minutes, long_break_minutes, long_break_interval, created_at
+         focus_minutes, break_minutes, long_break_minutes, long_break_interval, task_group_id, created_at
          FROM app_bindings ORDER BY created_at DESC",
     )?;
     let rows = stmt.query_map([], |row| {
@@ -91,7 +121,8 @@ pub fn get_bindings(db: &Database) -> Result<Vec<AppBinding>> {
             break_minutes: row.get(7)?,
             long_break_minutes: row.get(8)?,
             long_break_interval: row.get(9)?,
-            created_at: row.get(10)?,
+            task_group_id: row.get(10)?,
+            created_at: row.get(11)?,
         })
     })?;
     Ok(rows.filter_map(|r| r.ok()).collect())
@@ -139,6 +170,7 @@ pub fn create_binding(db: &Database, app_name: &str, bundle_id: &str, icon_path:
         break_minutes,
         long_break_minutes,
         long_break_interval,
+        task_group_id: None,
         created_at: now,
     })
 }
@@ -210,10 +242,219 @@ pub fn update_binding(
 pub fn delete_binding(db: &Database, id: &str) -> Result<()> {
     let conn = db.conn.lock().unwrap();
     // Delete related records first (cascade)
+    conn.execute("DELETE FROM task_group_bindings WHERE binding_id = ?1", (id,))?;
     conn.execute("DELETE FROM usage_records WHERE binding_id = ?1", (id,))?;
     conn.execute("DELETE FROM pomodoro_sessions WHERE binding_id = ?1", (id,))?;
     conn.execute("DELETE FROM app_bindings WHERE id = ?1", (id,))?;
     Ok(())
+}
+
+// ── Task Group CRUD ──
+
+pub fn create_task_group(
+    db: &Database,
+    name: &str,
+    focus_minutes: i32,
+    break_minutes: i32,
+    long_break_minutes: i32,
+    long_break_interval: i32,
+) -> Result<TaskGroup> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono_now();
+    let conn = db.conn.lock().unwrap();
+    conn.execute(
+        "INSERT INTO task_groups (id, name, focus_minutes, break_minutes, long_break_minutes, long_break_interval, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        (&id, name, focus_minutes, break_minutes, long_break_minutes, long_break_interval, now),
+    )?;
+    Ok(TaskGroup {
+        id,
+        name: name.to_string(),
+        focus_minutes,
+        break_minutes,
+        long_break_minutes,
+        long_break_interval,
+        created_at: now,
+    })
+}
+
+pub fn get_task_groups(db: &Database) -> Result<Vec<TaskGroup>> {
+    let conn = db.conn.lock().unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT id, name, focus_minutes, break_minutes, long_break_minutes, long_break_interval, created_at
+         FROM task_groups ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(TaskGroup {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            focus_minutes: row.get(2)?,
+            break_minutes: row.get(3)?,
+            long_break_minutes: row.get(4)?,
+            long_break_interval: row.get(5)?,
+            created_at: row.get(6)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_all_task_groups_with_bindings(db: &Database) -> Result<Vec<TaskGroupWithBindings>> {
+    let groups = get_task_groups(db)?;
+    let mut result = Vec::new();
+    for group in groups {
+        let bindings = get_bindings_for_group(db, &group.id)?;
+        result.push(TaskGroupWithBindings {
+            id: group.id,
+            name: group.name,
+            focus_minutes: group.focus_minutes,
+            break_minutes: group.break_minutes,
+            long_break_minutes: group.long_break_minutes,
+            long_break_interval: group.long_break_interval,
+            created_at: group.created_at,
+            bindings,
+        });
+    }
+    Ok(result)
+}
+
+pub fn update_task_group(
+    db: &Database,
+    id: &str,
+    name: Option<&str>,
+    focus_minutes: Option<i32>,
+    break_minutes: Option<i32>,
+    long_break_minutes: Option<i32>,
+    long_break_interval: Option<i32>,
+) -> Result<TaskGroup> {
+    let conn = db.conn.lock().unwrap();
+
+    let mut sets = Vec::new();
+    let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(v) = name {
+        sets.push("name = ?");
+        values.push(Box::new(v.to_string()));
+    }
+    if let Some(v) = focus_minutes {
+        sets.push("focus_minutes = ?");
+        values.push(Box::new(v));
+    }
+    if let Some(v) = break_minutes {
+        sets.push("break_minutes = ?");
+        values.push(Box::new(v));
+    }
+    if let Some(v) = long_break_minutes {
+        sets.push("long_break_minutes = ?");
+        values.push(Box::new(v));
+    }
+    if let Some(v) = long_break_interval {
+        sets.push("long_break_interval = ?");
+        values.push(Box::new(v));
+    }
+
+    if !sets.is_empty() {
+        values.push(Box::new(id.to_string()));
+        let sql = format!("UPDATE task_groups SET {} WHERE id = ?", sets.join(", "));
+        let params: Vec<&dyn rusqlite::types::ToSql> = values.iter().map(|v| v.as_ref()).collect();
+        conn.execute(&sql, params.as_slice())?;
+    }
+
+    drop(conn);
+    let groups = get_task_groups(db)?;
+    groups.into_iter().find(|g| g.id == id)
+        .ok_or_else(|| rusqlite::Error::QueryReturnedNoRows)
+}
+
+pub fn delete_task_group(db: &Database, id: &str) -> Result<()> {
+    let conn = db.conn.lock().unwrap();
+    // First, clear task_group_id on all bindings in this group
+    conn.execute("UPDATE app_bindings SET task_group_id = NULL WHERE task_group_id = ?1", (id,))?;
+    conn.execute("DELETE FROM task_group_bindings WHERE group_id = ?1", (id,))?;
+    conn.execute("DELETE FROM task_groups WHERE id = ?1", (id,))?;
+    Ok(())
+}
+
+pub fn add_binding_to_group(db: &Database, group_id: &str, binding_id: &str) -> Result<()> {
+    let now = chrono_now();
+    let conn = db.conn.lock().unwrap();
+    // Set the task_group_id on the binding (disable individual pomodoro)
+    conn.execute(
+        "UPDATE app_bindings SET task_group_id = ?1, pomodoro_enabled = 0 WHERE id = ?2",
+        (group_id, binding_id),
+    )?;
+    // Insert the association (ignore if already exists)
+    conn.execute(
+        "INSERT OR IGNORE INTO task_group_bindings (group_id, binding_id, created_at) VALUES (?1, ?2, ?3)",
+        (group_id, binding_id, now),
+    )?;
+    Ok(())
+}
+
+pub fn remove_binding_from_group(db: &Database, binding_id: &str) -> Result<()> {
+    let conn = db.conn.lock().unwrap();
+    // Clear task_group_id and re-enable individual pomodoro
+    conn.execute(
+        "UPDATE app_bindings SET task_group_id = NULL, pomodoro_enabled = 1 WHERE id = ?1",
+        (binding_id,),
+    )?;
+    conn.execute(
+        "DELETE FROM task_group_bindings WHERE binding_id = ?1",
+        (binding_id,),
+    )?;
+    Ok(())
+}
+
+pub fn get_bindings_for_group(db: &Database, group_id: &str) -> Result<Vec<AppBinding>> {
+    let conn = db.conn.lock().unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT ab.id, ab.app_name, ab.bundle_id, ab.icon_path, ab.tracking_enabled, ab.pomodoro_enabled,
+         ab.focus_minutes, ab.break_minutes, ab.long_break_minutes, ab.long_break_interval, ab.task_group_id, ab.created_at
+         FROM app_bindings ab
+         INNER JOIN task_group_bindings tgb ON ab.id = tgb.binding_id
+         WHERE tgb.group_id = ?1
+         ORDER BY ab.created_at DESC",
+    )?;
+    let rows = stmt.query_map((group_id,), |row| {
+        Ok(AppBinding {
+            id: row.get(0)?,
+            app_name: row.get(1)?,
+            bundle_id: row.get(2)?,
+            icon_path: row.get(3)?,
+            tracking_enabled: row.get::<_, i32>(4)? != 0,
+            pomodoro_enabled: row.get::<_, i32>(5)? != 0,
+            focus_minutes: row.get(6)?,
+            break_minutes: row.get(7)?,
+            long_break_minutes: row.get(8)?,
+            long_break_interval: row.get(9)?,
+            task_group_id: row.get(10)?,
+            created_at: row.get(11)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
+pub fn get_group_for_binding(db: &Database, binding_id: &str) -> Result<Option<TaskGroup>> {
+    let conn = db.conn.lock().unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT tg.id, tg.name, tg.focus_minutes, tg.break_minutes, tg.long_break_minutes, tg.long_break_interval, tg.created_at
+         FROM task_groups tg
+         INNER JOIN task_group_bindings tgb ON tg.id = tgb.group_id
+         WHERE tgb.binding_id = ?1",
+    )?;
+    let mut rows = stmt.query_map((binding_id,), |row| {
+        Ok(TaskGroup {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            focus_minutes: row.get(2)?,
+            break_minutes: row.get(3)?,
+            long_break_minutes: row.get(4)?,
+            long_break_interval: row.get(5)?,
+            created_at: row.get(6)?,
+        })
+    })?;
+    match rows.next() {
+        Some(Ok(group)) => Ok(Some(group)),
+        _ => Ok(None),
+    }
 }
 
 // ── Usage Records ──
@@ -314,6 +555,40 @@ pub fn create_pomodoro_session(
     })
 }
 
+/// Create an interrupted (rotten tomato) pomodoro session record.
+pub fn create_interrupted_session(
+    db: &Database,
+    binding_id: &str,
+    session_type: &str,
+    planned_duration: i64,
+    actual_duration: i64,
+    started_at: i64,
+    pomodoro_index: i32,
+    interrupted_by: &str,
+) -> Result<PomodoroSession> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = chrono_now();
+    let conn = db.conn.lock().unwrap();
+    conn.execute(
+        "INSERT INTO pomodoro_sessions (id, binding_id, type, planned_duration_seconds, actual_duration_seconds, completed, interrupted_by, started_at, ended_at, pomodoro_index, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?9, ?10)",
+        (&id, binding_id, session_type, planned_duration, actual_duration, interrupted_by, started_at, now, pomodoro_index, now),
+    )?;
+    Ok(PomodoroSession {
+        id,
+        binding_id: binding_id.to_string(),
+        session_type: session_type.to_string(),
+        planned_duration_seconds: planned_duration,
+        actual_duration_seconds: actual_duration,
+        completed: false,
+        interrupted_by: Some(interrupted_by.to_string()),
+        started_at,
+        ended_at: Some(now),
+        pomodoro_index,
+        created_at: now,
+    })
+}
+
 pub fn get_pomodoro_range(db: &Database, start_ts: i64, end_ts: i64) -> Result<Vec<PomodoroSession>> {
     let conn = db.conn.lock().unwrap();
     let mut stmt = conn.prepare(
@@ -363,7 +638,7 @@ pub fn set_setting(db: &Database, key: &str, value: &str) -> Result<()> {
 pub fn clear_all_data(db: &Database) -> Result<()> {
     let conn = db.conn.lock().unwrap();
     conn.execute_batch(
-        "DELETE FROM usage_records; DELETE FROM pomodoro_sessions; DELETE FROM app_bindings; DELETE FROM settings;",
+        "DELETE FROM task_group_bindings; DELETE FROM task_groups; DELETE FROM usage_records; DELETE FROM pomodoro_sessions; DELETE FROM app_bindings; DELETE FROM settings;",
     )?;
     Ok(())
 }

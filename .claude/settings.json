@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(git add *)",
-      "Bash(git commit -m 'feat: UI优化 + 绑定编辑功能 *)"
+      "Bash(git commit -m 'feat: UI优化 + 绑定编辑功能 *)",
+      "WebFetch(domain:colorhunt.co)",
+      "WebFetch(domain:coolors.co)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(cargo build *)",
+      "Bash(git commit -m 'fix: 改善应用检测和计时匹配 — 解决微信/英雄联盟等应用识别和时长记录问题 *)"
     ]
   }
 }
